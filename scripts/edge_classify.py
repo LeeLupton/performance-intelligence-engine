@@ -35,9 +35,18 @@ class ClassifyInputs:
     scope: Polygon | MultiPolygon       # dissolved parcel scope
     buildings: gpd.GeoDataFrame | None = None
     dune_zone: Polygon | MultiPolygon | None = None
-    # road edges within this distance outside scope still count as frontage
+    natural_zones: list = field(default_factory=list)   # unmaintained veg
+    bed_interior_zones: list = field(default_factory=list)  # planted beds
+    farside_zone: Polygon | MultiPolygon | None = None  # never our frontage
+    # internal ROW verge maintained by the complex: scope-equivalent
+    verge_zone: Polygon | MultiPolygon | None = None
+    # (feature_type, polygon) in priority order; segments outside all zones
+    # default to pad_drive
+    type_zones: list = field(default_factory=list)
+    # road/walk edges within this distance outside scope still count as
+    # frontage (ROW verge maintained by the adjacent owner)
     frontage_allowance_ft: float = 30.0
-    road_types: tuple = ("road",)
+    frontage_types: tuple = ("road", "walk", "walk_path")
     extras: dict = field(default_factory=dict)
 
 
@@ -136,16 +145,23 @@ def classify(inp: ClassifyInputs) -> dict:
     scope = inp.scope
     in_scope = np.array([scope.covers(p) or scope.distance(p) <= 0.5 for p in mids])
 
-    # nearest pavement feature -> source / feature_type attribution
+    # source attribution from the nearest input pavement feature
     joined = gpd.sjoin_nearest(
         gpd.GeoDataFrame(geometry=mids, crs=CRS_FT),
-        pav[["geometry", "source", "feature_type"]],
-        how="left", distance_col="_d")
+        pav[["geometry", "source"]], how="left", distance_col="_d")
     joined = joined[~joined.index.duplicated(keep="first")]
     segs["source"] = joined["source"].values
-    segs["feature_type"] = joined["feature_type"].values
 
-    is_road = segs["feature_type"].isin(inp.road_types).values
+    # feature_type from manual type zones (priority order), else pad_drive
+    ftype = np.full(len(segs), "pad_drive", object)
+    unset = np.ones(len(segs), bool)
+    for name, zone in inp.type_zones:
+        hit = unset & np.array([zone.covers(p) for p in mids])
+        ftype[hit] = name
+        unset &= ~hit
+    segs["feature_type"] = ftype
+
+    frontage_ok = segs["feature_type"].isin(inp.frontage_types).values
 
     near_scope = np.array(
         [scope.distance(p) <= inp.frontage_allowance_ft for p in mids])
@@ -156,15 +172,29 @@ def classify(inp: ClassifyInputs) -> dict:
     else:
         near_bldg = np.zeros(len(segs), bool)
 
-    if inp.dune_zone is not None:
-        in_dune = np.array([inp.dune_zone.covers(p) for p in mids])
-    else:
-        in_dune = np.zeros(len(segs), bool)
+    def inside(zone):
+        if zone is None:
+            return np.zeros(len(segs), bool)
+        return np.array([zone.covers(p) for p in mids])
 
+    in_dune = inside(inp.dune_zone)
+    in_far = inside(inp.farside_zone)
+    in_verge = inside(inp.verge_zone)
+    in_nat = np.zeros(len(segs), bool)
+    for z in inp.natural_zones:
+        in_nat |= inside(z)
+    in_bed = np.zeros(len(segs), bool)
+    for z in inp.bed_interior_zones:
+        in_bed |= inside(z)
+
+    in_scope_eff = in_scope | in_verge
     cls = np.full(len(segs), "BLADE", object)
-    cls[~in_scope] = "EXCLUDE-SCOPE"
-    cls[~in_scope & is_road & near_scope] = "BLADE"   # road frontage allowance
+    cls[~in_scope_eff] = "EXCLUDE-SCOPE"
+    cls[~in_scope_eff & frontage_ok & near_scope] = "BLADE"  # frontage allowance
+    cls[in_far] = "EXCLUDE-SCOPE"
     cls[near_bldg] = "EXCLUDE-BUILDING"
+    cls[in_nat] = "EXCLUDE-NATURAL"
+    cls[in_bed] = "EXCLUDE-BED-INTERIOR"
     cls[in_dune] = "EXCLUDE-DUNE"
     segs["class"] = cls
 
