@@ -20,5 +20,3 @@ dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 idr-intelligence = "idr_intelligence.cli:main"
-
-[
