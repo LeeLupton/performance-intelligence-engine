@@ -44,11 +44,11 @@
       },
       {
         "module": "src/idr_intelligence/graph.py",
-        "role": "temporal graph: per-entity histories, normalized adjacency, evidence provenance"
+        "role": "temporal graph: per-entity histories, per-entity time deltas, normalized adjacency, evidence provenance"
       },
       {
         "module": "src/idr_intelligence/models.py",
-        "role": "SelectiveSSM (S6), ResidualGraphLayer, CampaignModel, checkpoint save/load"
+        "role": "SelectiveSSM (time-aware S6), ResidualGraphLayer, GatedAttentionPool, CampaignModel, checkpoint save/load"
       },
       {
         "module": "src/idr_intelligence/simulator.py",
@@ -96,12 +96,12 @@
       {
         "name": "checkpoint",
         "version": "v4",
-        "contract": "state_dict (incl. temperature + cal_bias buffers), feature_dim/hidden_dim/state_dim, use_s6/use_gnn/pooling, manifest (engine_version, feature_schema_hash, config_hash, created_at, calibration string), feature_stats; loader defaults missing temperature/cal_bias to identity and raises SchemaMismatchError on feature-schema drift; raw v1 state dicts still load"
+        "contract": "state_dict (incl. temperature + cal_bias buffers), feature_dim/hidden_dim/state_dim, use_s6/use_gnn/pooling, manifest (engine_version, feature_schema_hash, config_hash, created_at, calibration string), feature_stats; loader defaults missing temperature/cal_bias to identity and raises SchemaMismatchError on feature-schema drift; raw v1 state dicts still load; also carries time_mode (global/per_entity/time_aware); time-aware S6 adds a time_weight param (absent otherwise)"
       },
       {
         "name": "TemporalGraph",
         "version": "v1",
-        "contract": "node_ids, sequences [N,steps,22], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"
+        "contract": "node_ids, sequences [N,steps,22], mask, deltas [N,steps] (per-entity log1p gaps), symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"
       },
       {
         "name": "IntelligenceFinding",
@@ -219,6 +219,11 @@
         "id": "ADR-21",
         "decision": "Identity entities: user: (global \u2014 the same actor links events across hosts, the load-bearing lateral-movement pivot), session:{host}:{sid}, cloud: nodes with authenticates_to/owns/spawns/accesses edges; has_user + has_identity_pivot features (FEATURE_DIM 20->22, schema hash rotates, checkpoints regenerate). lateral_movement scenario scatters all infrastructure so only the shared user connects the campaign; cross-host linkage is structural (global user node), not a per-event feature",
         "where": "docs/ROADMAP.md W10 \u2014 closes Phase 2"
+      },
+      {
+        "id": "ADR-22",
+        "decision": "W11 per-entity time: build_temporal_graph tracks last_seen per entity; under per_entity/time_aware the delta_seconds_log feature becomes the gap since THAT entity was last seen (feature values change but FEATURE_NAMES/schema-hash do not), and a deltas [N,steps] channel carries per-entity gaps to a time-aware SelectiveSSM (delta += time_weight*dt, time_weight init 0 = identity). HONEST RESULT: time_ablation on low_and_slow at 80/3 gives global Brier 0.221 vs per_entity/time_aware 0.238 \u2014 time-awareness does not beat the global gap at demo budget (time_weight barely moves in 3 epochs; per-entity resets lose graph-level timing signal). Capability shipped with a falsifiable test; verdict recorded, not assumed",
+        "where": "docs/ROADMAP.md W11"
       }
     ]
   },
@@ -239,13 +244,14 @@
       "W8: LabeledWindow schema + dataio loader + --data training path",
       "W9: rolling-origin CV + replicates with statistical best-model verdict (CLI: ablation)",
       "Verification fixes (wk3kr3oza, 12 upheld): affine calibration replacing broken temperature-only [BLOCKING], degenerate recall@FPR handling, Rust sketch + state.json contract sync [BLOCKING], attack docstring, and 5 vacuous/tautological tests rewritten to fail on real regressions [2 BLOCKING]",
-      "W10: identity entities (user/session/cloud) + edges + features + lateral_movement scenario \u2014 Phase 2 complete"
+      "W10: identity entities (user/session/cloud) + edges + features + lateral_movement scenario \u2014 Phase 2 complete",
+      "W11: per-entity time deltas + time-aware S6 discretization + time_ablation (honest verdict: global wins on low_and_slow at demo budget)"
     ],
     "active": [
-      "W11: per-entity time deltas feeding a time-aware S6 discretization (opens Phase 3)"
+      "W12: bounded, decayed, sparse entity graph (GraphBudget, half-life edge decay, deque histories, LRU eviction, sparse k-hop snapshot)"
     ],
     "blocked": [
-      "Phase 3: W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence + suppression",
+      "Phase 3 remainder: W13 S6 step() cell, W14 structured evidence + suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry, W17 ONNX + Rust bridge"
     ]
   },
@@ -254,7 +260,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "63 passed"
+        "result": "67 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
@@ -262,13 +268,18 @@
         "result": "clean; 14 source files"
       },
       {
+        "cmd": "idr-intelligence time-ablation --scenario low_and_slow --samples 80 --epochs 3",
+        "when": "2026-07-23",
+        "result": "best_mode=global (0.2206) vs per_entity/time_aware (0.2380) \u2014 honest negative at demo budget"
+      },
+      {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "suite v1 passed incl. new lateral_movement floor, 0 violations"
+        "result": "passed with time_aware default hybrid, 0 violations"
       }
     ],
     "tests": [
-      "tests: 63 \u2014 adds identity entity/edge extraction, has_user/has_identity_pivot features, lateral_movement links-only-via-user (1 shared actor across 6 hosts; benign has a distinct user per stage)"
+      "tests: 67 \u2014 adds per-entity gap correctness (last-seen normalization), global-vs-per_entity feature divergence, time_weight=0 identity equivalence, time_mode checkpoint round-trip, 3-mode time-ablation; drift test now asserts the 35x low_and_slow-vs-in-distribution delta-PSI separation"
     ],
     "benchmarks": [
       {
@@ -341,9 +352,9 @@
       "evidence_precision_at_5 uses multi-event entity membership as ground truth; valid for the current simulator convergence design only"
     ],
     "uncertainty": [
-      "No real labeled campaigns yet (W8); production accuracy unknown",
-      "Homogeneous message passing; typed variant deliberately deferred until split-host evasion scenario can falsify it (see roadmap rejection)",
-      "Adjacency accumulates over the whole window, no decay (W12); delta_seconds is global, not per-entity (W11)"
+      "No real labeled campaigns yet (W8 path exists); production accuracy unknown",
+      "Homogeneous message passing; typed variant deferred until split-host evasion can falsify it",
+      "Time-awareness (W11) does not beat the global gap on synthetic low_and_slow at demo budget \u2014 needs more training epochs or real timing distributions to show value; adjacency still un-decayed (W12 next)"
     ]
   },
   "artifacts": [
@@ -370,11 +381,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:pending-w10",
+    "source_digest": "git:530231f-plus-w11",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "Calibration fix in PR #16; W10 identity entities implemented \u2014 Phase 2 complete (10/14 workstreams); Phase 3 opens with W11 per-entity time"
+      "summary": "Phase 3 opened: W11 per-entity time + time-aware S6 shipped with an honest negative ablation verdict; W12 bounded decayed graph next"
     }
   }
 }

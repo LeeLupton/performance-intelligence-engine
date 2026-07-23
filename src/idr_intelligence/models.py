@@ -11,9 +11,15 @@ from torch.nn import functional as F
 
 
 class SelectiveSSM(nn.Module):
-    """Auditable diagonal selective state-space layer."""
+    """Auditable diagonal selective state-space layer.
 
-    def __init__(self, input_dim: int, hidden_dim: int, state_dim: int) -> None:
+    When time_aware, the discretization step size is nudged by the elapsed
+    per-entity time (a precomputed log1p-normalized gap), so state decay tracks
+    real elapsed time rather than position. time_weight starts at 0, making the
+    time-aware layer identical to the base layer at initialization.
+    """
+
+    def __init__(self, input_dim: int, hidden_dim: int, state_dim: int, time_aware: bool = False) -> None:
         super().__init__()
         self.input_proj = nn.Linear(input_dim, hidden_dim)
         self.a_log = nn.Parameter(torch.zeros(hidden_dim, state_dim))
@@ -24,8 +30,10 @@ class SelectiveSSM(nn.Module):
         self.norm = nn.LayerNorm(hidden_dim)
         self.hidden_dim = hidden_dim
         self.state_dim = state_dim
+        self.time_aware = time_aware
+        self.time_weight = nn.Parameter(torch.zeros(1)) if time_aware else None
 
-    def forward(self, sequence: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, sequence: torch.Tensor, mask: torch.Tensor, deltas: torch.Tensor | None = None) -> torch.Tensor:
         u = self.input_proj(sequence)
         batch, steps, _ = u.shape
         state = torch.zeros(batch, self.hidden_dim, self.state_dim, device=u.device, dtype=u.dtype)
@@ -34,7 +42,10 @@ class SelectiveSSM(nn.Module):
         for step in range(steps):
             current = u[:, step]
             active = mask[:, step].view(batch, 1, 1)
-            delta = F.softplus(self.delta(current)).unsqueeze(-1).clamp(max=5.0)
+            delta_pre = self.delta(current)
+            if self.time_weight is not None and deltas is not None:
+                delta_pre = delta_pre + self.time_weight * deltas[:, step].unsqueeze(-1)
+            delta = F.softplus(delta_pre).unsqueeze(-1).clamp(max=5.0)
             a_bar = torch.exp(delta * a)
             b = self.b_proj(current).view(batch, self.hidden_dim, self.state_dim)
             candidate = a_bar * state + delta * b * current.unsqueeze(-1)
@@ -103,17 +114,20 @@ class CampaignModel(nn.Module):
     node_head ranking as an ablation arm.
     """
 
-    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True, pooling: str = "attention") -> None:
+    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True, pooling: str = "attention", time_mode: str = "time_aware") -> None:
         super().__init__()
         if pooling not in ("attention", "uniform"):
             raise ValueError(f"unknown pooling mode: {pooling}")
+        if time_mode not in ("global", "per_entity", "time_aware"):
+            raise ValueError(f"unknown time_mode: {time_mode}")
         self.feature_dim = feature_dim
         self.hidden_dim = hidden_dim
         self.state_dim = state_dim
         self.use_s6 = use_s6
         self.use_gnn = use_gnn
         self.pooling = pooling
-        self.temporal = SelectiveSSM(feature_dim, hidden_dim, state_dim) if use_s6 else None
+        self.time_mode = time_mode
+        self.temporal = SelectiveSSM(feature_dim, hidden_dim, state_dim, time_aware=(use_s6 and time_mode == "time_aware")) if use_s6 else None
         self.static = (
             None
             if use_s6
@@ -148,12 +162,13 @@ class CampaignModel(nn.Module):
             return "none"
         return f"affine:scale={1.0 / temperature:.6f},bias={bias:.6f}"
 
-    def forward(self, sequences: torch.Tensor, mask: torch.Tensor, adjacency: torch.Tensor) -> ModelOutput:
+    def forward(self, sequences: torch.Tensor, mask: torch.Tensor, adjacency: torch.Tensor, deltas: torch.Tensor | None = None) -> ModelOutput:
         batch, nodes, steps, features = sequences.shape
         flat_sequence = sequences.view(batch * nodes, steps, features)
         flat_mask = mask.view(batch * nodes, steps)
         if self.temporal is not None:
-            node_state = self.temporal(flat_sequence, flat_mask)
+            flat_deltas = deltas.reshape(batch * nodes, steps) if deltas is not None else None
+            node_state = self.temporal(flat_sequence, flat_mask, flat_deltas)
         else:
             assert self.static is not None
             valid = flat_mask.unsqueeze(-1)
@@ -191,6 +206,7 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
             "use_s6": model.use_s6,
             "use_gnn": model.use_gnn,
             "pooling": model.pooling,
+            "time_mode": model.time_mode,
             "manifest": ModelManifest.create(calibration=model.calibration_label()).to_dict(),
             "feature_stats": model.feature_stats,
         },
@@ -224,6 +240,7 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
             use_s6=bool(payload.get("use_s6", True)),
             use_gnn=bool(payload.get("use_gnn", True)),
             pooling=str(payload.get("pooling", _infer_pooling(state_dict))),
+            time_mode=str(payload.get("time_mode", "time_aware" if "temporal.time_weight" in state_dict else "per_entity")),
         )
         model.load_state_dict(state_dict)
         model.feature_stats = payload.get("feature_stats")
@@ -246,6 +263,7 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
         use_s6=use_s6,
         use_gnn=any(key.startswith("graph_layers.") for key in payload),
         pooling="uniform",
+        time_mode="time_aware" if "temporal.time_weight" in kept else "per_entity",
     )
     model.load_state_dict(kept)
     return model
