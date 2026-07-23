@@ -17,7 +17,7 @@ from .config import DEFAULT_CONFIG
 from .features import FEATURE_DIM
 from .graph import build_temporal_graph
 from .models import CampaignModel, save_checkpoint
-from .simulator import simulate_campaign
+from .simulator import SCENARIOS, simulate_campaign
 
 HIDDEN_DIM = DEFAULT_CONFIG.model.hidden_dim
 STATE_DIM = DEFAULT_CONFIG.model.state_dim
@@ -41,7 +41,7 @@ def set_seed(seed: int) -> None:
     torch.set_num_threads(1)
 
 
-def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, malicious_rate: float = 0.5) -> Batch:
+def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, malicious_rate: float = 0.5, scenario: str = "v0_easy") -> Batch:
     """Simulate benign/malicious campaigns with seeded random labels and pad into one Batch.
 
     Labels are drawn per-sample (not the former index%2 alternation, which
@@ -59,7 +59,7 @@ def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONF
     labels = []
     for index in range(samples):
         label = int(label_row[index])
-        graph = build_temporal_graph(simulate_campaign(label, seed + index), max_steps=max_steps)
+        graph = build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), max_steps=max_steps)
         count = min(graph.node_count, max_nodes)
         sequences[index, :count] = graph.sequences[:count]
         mask[index, :count] = graph.mask[:count]
@@ -89,10 +89,10 @@ def chronological_split(batch: Batch) -> tuple[Batch, Batch, Batch]:
     return _slice(batch, 0, train_end), _slice(batch, train_end, validation_end), _slice(batch, validation_end, size)
 
 
-def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None, malicious_rate: float = 0.5) -> dict:
+def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None, malicious_rate: float = 0.5, scenario: str = "v0_easy") -> dict:
     """Train every ablation variant under one split, save the hybrid, return the report."""
     set_seed(seed)
-    train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed, malicious_rate=malicious_rate))
+    train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed, malicious_rate=malicious_rate, scenario=scenario))
     variants: dict[str, dict[str, Any]] = {
         "static_baseline": {"use_s6": False, "use_gnn": False},
         "s6_only": {"use_s6": True, "use_gnn": False},
@@ -111,9 +111,11 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
     report = {
         "problem": "predict campaign escalation from ordered IdrEvent histories and entity relationships",
         "malicious_rate": malicious_rate,
+        "scenario": scenario,
         "split": {"train": len(train.labels), "validation": len(validation.labels), "test": len(test.labels)},
         "metrics": results,
         "evidence_precision_at_5": evidence_precision,
+        "scenario_generalization": scenario_generalization(trained["s6_gnn"], seed=seed + samples + 1000),
         "best_model": max(results, key=lambda name: results[name]["pr_auc"]),
         "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
     }
@@ -164,6 +166,40 @@ def _fit_temperature(model: CampaignModel, validation: Batch) -> None:
         candidates = torch.cat([torch.tensor([1.0]), torch.logspace(-0.7, 0.7, 29)])
         losses = [loss_fn(logits / t, validation.labels).item() for t in candidates]
     model.temperature.fill_(float(candidates[int(np.argmin(losses))]))
+
+
+def scenario_generalization(model: CampaignModel, seed: int, samples: int = 20) -> dict[str, dict[str, float]]:
+    """Evaluate one trained model across every scenario family on held-out seeds.
+
+    Labels alternate — harmless here because these sets are never split — and
+    seeds sit far above the training range. This is the table that makes
+    evasion-scenario regressions visible: a v0_easy-trained model is expected
+    to degrade on the evasion families until the modeling workstreams land.
+    """
+    rows: dict[str, dict[str, float]] = {}
+    for scenario in SCENARIOS:
+        graphs = []
+        labels = []
+        for index in range(samples):
+            label = index % 2
+            graphs.append(build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario)))
+            labels.append(float(label))
+        max_nodes = max(graph.node_count for graph in graphs)
+        max_steps = max(graph.sequences.shape[1] for graph in graphs)
+        sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
+        mask = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
+        adjacency = np.zeros((samples, max_nodes, max_nodes), dtype=np.float32)
+        for index, graph in enumerate(graphs):
+            count = graph.node_count
+            sequences[index, :count, : graph.sequences.shape[1]] = graph.sequences
+            mask[index, :count, : graph.sequences.shape[1]] = graph.mask
+            adjacency[index, :count, :count] = graph.adjacency
+            if count < max_nodes:
+                adjacency[index, count:, count:] = np.eye(max_nodes - count, dtype=np.float32)
+        batch = Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
+        metrics = _evaluate(model, batch)
+        rows[scenario] = {key: metrics[key] for key in ("roc_auc", "brier", "recall_at_fpr_1pct")}
+    return rows
 
 
 def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) -> float:

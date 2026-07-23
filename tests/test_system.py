@@ -195,6 +195,90 @@ def test_finding_carries_provenance():
     assert len(finding.related_entities) <= DEFAULT_CONFIG.scoring.top_k
 
 
+def test_v0_easy_scenario_keeps_original_semantics():
+    events = simulate_campaign(1, 5)
+    assert events == simulate_campaign(1, 5, scenario="v0_easy")
+    hosts = {event.metadata["host"] for event in events}
+    assert hosts == {"workstation-05"}
+    benign_hosts = {event.metadata["host"] for event in simulate_campaign(0, 5)}
+    assert len(benign_hosts) == 6
+
+
+def test_split_host_links_only_via_infrastructure():
+    events = simulate_campaign(1, 9, scenario="split_host")
+    hosts = {event.metadata["host"] for event in events}
+    assert len(hosts) == 6
+    graph = build_temporal_graph(events)
+    hashes = {node for node in graph.node_ids if node.startswith("hash:")}
+    ips = {node for node in graph.node_ids if node.startswith("ip:")}
+    assert len(hashes) == 1
+    assert any(node.startswith("prefix:") for node in graph.node_ids)
+    assert len({node for node in ips if node.endswith(f".{20 + 9 % 70}")}) == 1
+
+
+def test_low_and_slow_stretches_the_kill_chain():
+    fast = simulate_campaign(1, 9)
+    slow = simulate_campaign(1, 9, scenario="low_and_slow")
+    fast_span = (fast[-1].timestamp - fast[0].timestamp).total_seconds()
+    slow_span = (slow[-1].timestamp - slow[0].timestamp).total_seconds()
+    assert slow_span == fast_span * 480
+
+
+def test_hash_rotation_breaks_hash_convergence():
+    events = simulate_campaign(1, 9, scenario="hash_rotation")
+    graph = build_temporal_graph(events)
+    hashes = {node for node in graph.node_ids if node.startswith("hash:")}
+    assert len(hashes) == 2
+    assert {event.metadata["host"] for event in events} == {"workstation-09"}
+
+
+def test_legit_update_is_a_topology_matched_hard_negative():
+    benign = simulate_campaign(0, 9, scenario="legit_update")
+    assert {event.metadata["host"] for event in benign} == {"workstation-09"}
+    socket = next(event for event in benign if event.kind_type == "socket_lineage")
+    assert socket.kind["is_signed"] is True
+    nvme = next(event for event in benign if event.kind_type == "nvme_latency_anomaly")
+    assert nvme.kind["concurrent_exfil"] is False
+    bgp = next(event for event in benign if event.kind_type == "bgp_anomaly")
+    assert bgp.kind["observed_origin_asn"] == bgp.kind["legitimate_origin_asn"]
+
+
+def test_truncated_scenario_prefixes_the_chain():
+    events = simulate_campaign(1, 9, scenario="truncated")
+    stage_reached = events[0].metadata["stage_reached"]
+    assert 2 <= stage_reached <= 6
+    assert len(events) == stage_reached
+    assert all(event.metadata["stage_index"] < stage_reached for event in events)
+
+
+def test_distractor_adds_benign_noise_on_the_campaign_host():
+    events = simulate_campaign(1, 9, scenario="distractor")
+    assert len(events) == 9
+    noise = [event for event in events if event.severity == "INFO"]
+    assert len(noise) == 3
+    assert all(event.kind["is_signed"] for event in noise)
+
+
+def test_scenarios_are_deterministic():
+    from idr_intelligence.simulator import SCENARIOS
+
+    for scenario in SCENARIOS:
+        first = simulate_campaign(1, 13, scenario=scenario)
+        second = simulate_campaign(1, 13, scenario=scenario)
+        assert [event.id for event in first] == [event.id for event in second]
+
+
+def test_report_contains_scenario_generalization(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from idr_intelligence.simulator import SCENARIOS
+
+    report = train_ablation(samples=20, epochs=1, seed=21)
+    table = report["scenario_generalization"]
+    assert set(table) == set(SCENARIOS)
+    for row in table.values():
+        assert set(row) == {"roc_auc", "brier", "recall_at_fpr_1pct"}
+
+
 def test_attack_table_covers_every_scored_kind():
     from idr_intelligence.attack import KIND_TO_ATTACK, TACTIC_ORDER
     from idr_intelligence.schema import KIND_PRIOR
