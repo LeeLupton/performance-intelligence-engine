@@ -1,5 +1,5 @@
-# Large reproducible intermediates (re-pull from county services; URLs in TAKEOFF.md)
-data/raw/contours_ocean_reef.geojson
-data/raw/aerial_context_0p5ft.tif
-data/raw/aerial_site_0p25ft.tif
-scripts/__pycache__/
+__pycache__/
+*.egg-info/
+.venv/
+artifacts/
+reports/demo.json
