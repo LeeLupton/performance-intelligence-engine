@@ -48,7 +48,7 @@ def occlusion_attribution(
 ) -> np.ndarray:
     """Per-node, per-feature score drop when each feature channel is zeroed.
 
-    attribution[node, feature] = baseline_node_logit − logit with that feature
+    attribution[node, feature] = baseline_node_logit - logit with that feature
     zeroed across the whole graph; positive means the feature pushed the node up.
     One forward pass per feature (cheap for a single scoring call).
     """

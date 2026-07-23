@@ -17,7 +17,7 @@ chronological order; an upstream replay/sort buffer owns reordering.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
@@ -192,7 +192,7 @@ class StreamingScorer:
         related = tuple(node_ids[index] for index in ranked)
         evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in self.entities[node_ids[index]].evidence_ids))
         stages = tuple(self._stages.values())
-        scored_at = datetime.now(timezone.utc).isoformat()
+        scored_at = datetime.now(UTC).isoformat()
         if registry is not None:
             campaign_id, continues_campaign, windows_observed = registry.match_or_register(node_ids, scored_at)
         else:

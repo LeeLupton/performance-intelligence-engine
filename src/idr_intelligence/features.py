@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .schema import IdrEvent, KIND_PRIOR, SEVERITY_WEIGHT
+from .schema import KIND_PRIOR, SEVERITY_WEIGHT, IdrEvent
 
 FEATURE_NAMES = [
     "severity",

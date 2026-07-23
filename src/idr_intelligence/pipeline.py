@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 import numpy as np
 import torch
-
-from typing import Any
 
 from .attack import observed_attack_stages, predict_next_stage
 from .campaigns import CampaignRegistry
@@ -88,7 +87,7 @@ def score_events(
     evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in graph.evidence_ids[index]))
     attribution = occlusion_attribution(model, sequence, mask, adjacency, deltas, node_logits)
     entity_evidence = tuple(record.to_dict() for record in build_entity_evidence(graph, events, node_probability, ranked, attribution))
-    scored_at = datetime.now(timezone.utc).isoformat()
+    scored_at = datetime.now(UTC).isoformat()
     if registry is not None:
         campaign_id, continues_campaign, windows_observed = registry.match_or_register(graph.node_ids, scored_at)
     else:

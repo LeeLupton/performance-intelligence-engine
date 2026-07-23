@@ -111,7 +111,7 @@ class CampaignRegistry:
         Path(path).write_text(json.dumps({"records": [asdict(record) for record in self.records]}, indent=2) + "\n")
 
     @classmethod
-    def load(cls, path: str | Path) -> "CampaignRegistry":
+    def load(cls, path: str | Path) -> CampaignRegistry:
         """Load a registry; a missing file yields an empty registry."""
         file = Path(path)
         if not file.exists():

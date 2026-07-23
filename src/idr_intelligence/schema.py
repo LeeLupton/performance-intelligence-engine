@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 from .config import DEFAULT_KIND_PRIOR, DEFAULT_SEVERITY_WEIGHT
 
@@ -29,7 +30,7 @@ class IdrEvent:
         return str(self.kind.get("type", "unknown"))
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "IdrEvent":
+    def from_dict(cls, raw: dict[str, Any]) -> IdrEvent:
         """Validate one decoded JSON object; raise ValueError naming what's wrong."""
         required = {"id", "timestamp", "source", "severity", "kind"}
         missing = sorted(required - raw.keys())
@@ -68,7 +69,7 @@ class LabeledWindow:
         return self.events[0].timestamp
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "LabeledWindow":
+    def from_dict(cls, raw: dict[str, Any]) -> LabeledWindow:
         """Validate one decoded window object; raise ValueError naming what's wrong."""
         missing = sorted({"window_id", "label", "events"} - raw.keys())
         if missing:
@@ -88,9 +89,9 @@ def _parse_timestamp(value: Any) -> datetime:
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, str):
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     else:
         raise ValueError("timestamp must be an ISO-8601 string")
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

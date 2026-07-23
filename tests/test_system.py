@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -9,10 +9,14 @@ import torch
 from idr_intelligence import cli
 from idr_intelligence.config import DEFAULT_CONFIG, ENGINE_VERSION, load_config
 from idr_intelligence.features import FEATURE_DIM, FEATURE_NAMES
-from idr_intelligence.registry import ModelManifest, SchemaMismatchError, feature_schema_hash
 from idr_intelligence.graph import build_temporal_graph
 from idr_intelligence.models import CampaignModel, load_campaign_model, save_checkpoint
 from idr_intelligence.pipeline import score_events
+from idr_intelligence.registry import (
+    ModelManifest,
+    SchemaMismatchError,
+    feature_schema_hash,
+)
 from idr_intelligence.schema import IdrEvent
 from idr_intelligence.simulator import simulate_campaign
 from idr_intelligence.training import make_dataset, train_ablation
@@ -87,7 +91,7 @@ def test_timestamps_normalize_to_utc():
     naive = IdrEvent.from_dict({**base, "timestamp": "2026-06-18T12:00:00"})
     offset = IdrEvent.from_dict({**base, "timestamp": "2026-06-18T14:00:00+02:00"})
     assert zulu.timestamp == naive.timestamp == offset.timestamp
-    assert zulu.timestamp.tzinfo == timezone.utc
+    assert zulu.timestamp.tzinfo == UTC
 
 
 def test_train_ablation_smoke_and_checkpoint_roundtrip(tmp_path, monkeypatch):
@@ -440,10 +444,10 @@ def test_drift_is_none_without_snapshot():
 
 
 def _timed_events(times_and_hosts):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     base = {"source": "kernel_ebpf", "severity": "HIGH"}
-    start = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
     out = []
     for idx, (minute, host) in enumerate(times_and_hosts):
         stamp = (start + timedelta(minutes=minute)).isoformat()
@@ -507,12 +511,12 @@ def test_graph_budget_evicts_least_recent():
 
 
 def test_graph_budget_apply_is_deterministic():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from idr_intelligence.bounded_graph import GraphBudget
 
     def t(minute):
-        return datetime(2026, 1, 1, 12, minute, tzinfo=timezone.utc)
+        return datetime(2026, 1, 1, 12, minute, tzinfo=UTC)
 
     last_seen = {"a": t(0), "b": t(5), "c": t(5), "d": t(9)}
     kept, evictions = GraphBudget(max_nodes=2).apply(last_seen)
@@ -1066,7 +1070,11 @@ def test_campaign_fingerprint_keeps_durable_drops_ephemeral():
 
 
 def test_weighted_jaccard_host_only_insufficient_infrastructure_sufficient():
-    from idr_intelligence.campaigns import MATCH_THRESHOLD, fingerprint, weighted_jaccard
+    from idr_intelligence.campaigns import (
+        MATCH_THRESHOLD,
+        fingerprint,
+        weighted_jaccard,
+    )
 
     known = fingerprint(["hash:abc", "domain:evil.example", "host:alpha"])
     # Same C2 infrastructure seen from a different host: continues the campaign.

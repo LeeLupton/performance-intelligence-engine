@@ -12,7 +12,12 @@ from .models import load_campaign_model
 from .pipeline import score_events
 from .schema import IdrEvent
 from .simulator import SCENARIOS, simulate_campaign
-from .training import decay_ablation, rolling_origin_ablation, time_ablation, train_ablation
+from .training import (
+    decay_ablation,
+    rolling_origin_ablation,
+    time_ablation,
+    train_ablation,
+)
 
 
 def main() -> None:
