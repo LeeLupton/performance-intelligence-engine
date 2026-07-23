@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "objective": {
+    "problem": "Decide whether individually weak IdrEvent signals form a credible campaign when their order and infrastructure relationships are evaluated together.",
+    "decision_target": "Advisory IntelligenceFinding (campaign probability + ranked entities + evidence event IDs) consumed by idr-sentinel deterministic corroboration.",
+    "success_metrics": [
+      "Held-out ROC-AUC / PR-AUC / Brier under chronological 60/20/20 splits",
+      "S6+GNN hybrid must beat or match every ablation variant on Brier under the same split",
+      "Every finding carries evidence_event_ids resolvable to source telemetry"
+    ]
+  },
+  "constraints": [
+    "Advisory boundary: model output must never trigger PanicResponse; idr-sentinel corroborates against primary telemetry first",
+    "Latent state is never an auditable substitute for source events; evidence IDs are mandatory in findings",
+    "Chronological splits only; no training on future information relative to prediction time",
+    "Synthetic benchmark results must never be presented as production detection accuracy",
+    "python >= 3.11; deps: numpy, torch >= 2.2, scikit-learn; GPL-3.0-or-later"
+  ],
+  "inputs": {
+    "sources": ["NDJSON streams of idr_common::IdrEvent from idr-main; synthetic matched campaigns from simulator.py"],
+    "schemas": ["IdrEvent: {id, timestamp, source, severity, kind{type,...}, metadata} — validated in schema.py"],
+    "provenance": ["Simulator seeds are deterministic; event IDs are seed-derived UUIDs"]
+  },
+  "outputs": [
+    "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability, predicted_next_stage (rule-based), related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations",
+    "Ablation benchmark report (training.py, reports/demo.json)",
+    "Checkpoint artifacts/hybrid_model.pt (dict: state_dict + feature_dim/hidden_dim/state_dim)"
+  ],
+  "architecture": {
+    "components": [
+      {"module": "src/idr_intelligence/schema.py", "role": "IdrEvent validation, severity/kind priors"},
+      {"module": "src/idr_intelligence/features.py", "role": "entity extraction, typed edges, 20-dim feature vector"},
+      {"module": "src/idr_intelligence/graph.py", "role": "temporal graph: per-entity histories, normalized adjacency, evidence provenance"},
+      {"module": "src/idr_intelligence/models.py", "role": "SelectiveSSM (S6), ResidualGraphLayer, CampaignModel, checkpoint save/load"},
+      {"module": "src/idr_intelligence/simulator.py", "role": "matched benign/malicious campaign generator"},
+      {"module": "src/idr_intelligence/training.py", "role": "chronological four-way ablation trainer (HIDDEN_DIM=24, STATE_DIM=6)"},
+      {"module": "src/idr_intelligence/pipeline.py", "role": "evidence-linked scoring"},
+      {"module": "src/idr_intelligence/cli.py", "role": "demo + NDJSON score commands"}
+    ],
+    "interfaces": [
+      {"name": "IdrEvent", "version": "v1", "contract": "canonical tagged shape from idr_common; kind must contain 'type'"},
+      {"name": "checkpoint", "version": "v2", "contract": "dict {state_dict, feature_dim, hidden_dim, state_dim}; v1 raw state dicts still load with dims inferred from tensor shapes and static.* keys dropped"},
+      {"name": "TemporalGraph", "version": "v1", "contract": "node_ids, sequences [N,steps,20], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"},
+      {"name": "IntelligenceFinding", "version": "v1", "contract": "see outputs; predicted_next_stage is a heuristic lookup, not learned"}
+    ],
+    "decisions": [
+      {"id": "ADR-1", "decision": "Advisory-only integration; findings feed idr-sentinel, never actuate responses", "where": "docs/ARCHITECTURE.md"},
+      {"id": "ADR-2", "decision": "Explicit per-step S6 scan chosen for auditability over throughput in v0.1", "where": "reports/AUDIT.md"},
+      {"id": "ADR-3", "decision": "Masked max-pools fill with -inf so isfinite guards genuinely zero all-padding rows (was -1e9 no-op)", "where": "PR #6"},
+      {"id": "ADR-4", "decision": "Ablation variants construct only the submodules they use, keeping parameter counts honest", "where": "PR #6"},
+      {"id": "ADR-5", "decision": "Checkpoints carry their own dimensions; CLI must not hardcode hyperparameters", "where": "PR #6"},
+      {"id": "ADR-6", "decision": "campaign_id derives from chronologically first event, independent of caller ordering", "where": "PR #6"},
+      {"id": "ADR-7", "decision": "Push CI restricted to main; PR commits build once via pull_request trigger", "where": "PR #6"},
+      {"id": "ADR-8", "decision": "mypy follows the running interpreter version; pinning 3.11 breaks against numpy 2.5 PEP 695 stubs on newer Pythons", "where": "PR #6"}
+    ]
+  },
+  "tasks": {
+    "completed": [
+      "v0.1.0 package merged to main (PR #2); CI lint fix (PR #5); Ocean Reef takeoff migrated out to LeeLupton/pricing (PR #4, pricing#1)",
+      "Review follow-ups + test hardening (4->14) + docstrings + mypy gate (PR #6)",
+      "state.json bootstrap (this slice)"
+    ],
+    "active": [
+      "Design-improvement roadmap synthesis (workflow wf_d3f88161-a42): 4 lenses -> 3-judge panel -> phased roadmap; integrate output into tasks.blocked as sequenced workstreams",
+      "Adversarial diff verification of PR #6 batch (workflow wf_75195b07-5f8); fold upheld findings into risks.defects"
+    ],
+    "blocked": [
+      "Roadmap workstreams: populated from wf_d3f88161-a42 output once it completes"
+    ]
+  },
+  "evidence": {
+    "commands_run": [
+      {"cmd": "python -m pytest -q", "when": "2026-07-23", "result": "14 passed"},
+      {"cmd": "ruff check src tests", "when": "2026-07-23", "result": "clean"},
+      {"cmd": "python -m mypy src", "when": "2026-07-23", "result": "no issues in 9 source files"},
+      {"cmd": "idr-intelligence demo --samples 20 --epochs 1 && score events.ndjson", "when": "2026-07-23", "result": "end-to-end pass incl. checkpoint v2 roundtrip"}
+    ],
+    "tests": ["tests/test_system.py: 14 tests — schema validation/rejection, graph symmetry, 4-path gradients, evidence retention, ablation smoke, checkpoint roundtrip + legacy load, CLI roundtrip + bad-line, campaign_id order-invariance, padding finiteness"],
+    "benchmarks": [
+      {"run": "demo --samples 80 --epochs 3, seed 7, 2026-07-23, torch 2.13 cpu", "roc_pr": "all four variants saturate at 1.0 (synthetic separability, not capability)", "brier": {"static_baseline": 0.19976, "s6_only": 0.236409, "gnn_only": 0.205985, "s6_gnn": 0.190922}}
+    ]
+  },
+  "risks": {
+    "defects": [],
+    "assumptions": [
+      "Simulator class separability makes ranking metrics uninformative at n=80; only calibration (Brier) separates variants",
+      "predicted_next_stage is a 4-rule lookup presented alongside model output; consumers must not read it as learned"
+    ],
+    "uncertainty": [
+      "No real labeled campaigns yet; production accuracy unknown",
+      "Homogeneous message passing: relation types counted but not used in propagation",
+      "Adjacency accumulates over the whole scoring window with no time decay or versioning",
+      "delta_seconds feature is the global inter-event gap, not per-entity"
+    ]
+  },
+  "artifacts": [
+    {"path": "docs/ARCHITECTURE.md", "role": "integration design + Rust EventKind sketch"},
+    {"path": "reports/AUDIT.md", "role": "model-risk audit and known limitations"},
+    {"path": ".github/workflows/ci.yml", "role": "Arch container CI: install, import check, pytest, ruff, mypy"},
+    {"path": "artifacts/hybrid_model.pt", "role": "checkpoint v2 (generated by demo, gitignored)"}
+  ],
+  "compressed_state": {
+    "format": "performance-intelligence-state-v1",
+    "source_digest": "git:9e50ba4597bc449d955219ed8055272dba4a0174",
+    "state_vector": [],
+    "latest_event": {
+      "when": "2026-07-23",
+      "summary": "PR #6 merged; main green end-to-end (pytest+ruff+mypy); README badges live; design-roadmap and diff-verify workflows in flight"
+    }
+  }
+}
