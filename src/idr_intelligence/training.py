@@ -6,6 +6,7 @@ import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -71,22 +72,26 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
     """Train all four variants under one split, save the hybrid, return the report."""
     set_seed(seed)
     train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed))
-    variants = {
-        "static_baseline": (False, False),
-        "s6_only": (True, False),
-        "gnn_only": (False, True),
-        "s6_gnn": (True, True),
+    variants: dict[str, dict[str, Any]] = {
+        "static_baseline": {"use_s6": False, "use_gnn": False},
+        "s6_only": {"use_s6": True, "use_gnn": False},
+        "gnn_only": {"use_s6": False, "use_gnn": True},
+        "s6_gnn": {"use_s6": True, "use_gnn": True},
+        "s6_gnn_uniform_pool": {"use_s6": True, "use_gnn": True, "pooling": "uniform"},
     }
-    results, trained = {}, {}
-    for name, (use_s6, use_gnn) in variants.items():
-        model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, use_s6=use_s6, use_gnn=use_gnn)
+    evidence_seeds = [seed + samples + offset for offset in range(8)]
+    results, trained, evidence_precision = {}, {}, {}
+    for name, kwargs in variants.items():
+        model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, **kwargs)
         _fit(model, train, validation, epochs)
         trained[name] = model
         results[name] = _evaluate(model, test)
+        evidence_precision[name] = evidence_precision_at_5(model, evidence_seeds)
     report = {
         "problem": "predict campaign escalation from ordered IdrEvent histories and entity relationships",
         "split": {"train": len(train.labels), "validation": len(validation.labels), "test": len(test.labels)},
         "metrics": results,
+        "evidence_precision_at_5": evidence_precision,
         "best_model": max(results, key=lambda name: results[name]["pr_auc"]),
         "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
     }
@@ -119,6 +124,29 @@ def _fit(model: CampaignModel, train: Batch, validation: Batch, epochs: int) -> 
             best_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
     if best_state is not None:
         model.load_state_dict(best_state)
+
+
+def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) -> float:
+    """Fraction of top-k ranked entities that are core (multi-event) campaign entities.
+
+    In a malicious simulation the converged host/hash/IP/process touch several
+    events while peripheral entities appear once, so multi-event membership is
+    usable ground truth for the ranking the finding hands to idr-sentinel.
+    """
+    model.eval()
+    precisions = []
+    for seed in seeds:
+        graph = build_temporal_graph(simulate_campaign(1, seed))
+        with torch.no_grad():
+            output = model(
+                torch.from_numpy(graph.sequences).unsqueeze(0),
+                torch.from_numpy(graph.mask).unsqueeze(0),
+                torch.from_numpy(graph.adjacency).unsqueeze(0),
+            )
+        top = torch.argsort(output.node_logits[0], descending=True)[: min(k, graph.node_count)].tolist()
+        core = {index for index, event_ids in enumerate(graph.evidence_ids) if len(event_ids) >= 2}
+        precisions.append(len(core.intersection(top)) / len(top))
+    return round(float(np.mean(precisions)), 6)
 
 
 def _evaluate(model: CampaignModel, batch: Batch) -> dict[str, float]:
