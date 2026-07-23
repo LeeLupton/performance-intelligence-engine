@@ -74,16 +74,45 @@ def _masked_max(values: torch.Tensor, keep: torch.Tensor, dim: int) -> torch.Ten
     return torch.where(torch.isfinite(maximum), maximum, torch.zeros_like(maximum))
 
 
-class CampaignModel(nn.Module):
-    """Ablatable S6 + GNN campaign classifier; either encoder can be disabled."""
+class GatedAttentionPool(nn.Module):
+    """Gated MIL attention whose scores drive both graph pooling and entity ranking.
 
-    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True) -> None:
+    Because the pooled vector feeds the trained campaign head, gradient flows
+    into the scores — unlike the former node_head, which the loss never reached.
+    """
+
+    def __init__(self, hidden_dim: int) -> None:
         super().__init__()
+        self.value = nn.Linear(hidden_dim, hidden_dim)
+        self.gate = nn.Linear(hidden_dim, hidden_dim)
+        self.score = nn.Linear(hidden_dim, 1)
+
+    def forward(self, nodes: torch.Tensor, active: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        scores = self.score(torch.tanh(self.value(nodes)) * torch.sigmoid(self.gate(nodes))).squeeze(-1)
+        weights = torch.softmax(scores.masked_fill(active.squeeze(-1) == 0, float("-inf")), dim=1)
+        weights = torch.nan_to_num(weights, nan=0.0)
+        pooled = (weights.unsqueeze(-1) * nodes).sum(dim=1)
+        return pooled, scores
+
+
+class CampaignModel(nn.Module):
+    """Ablatable S6 + GNN campaign classifier; either encoder and the pooling are swappable.
+
+    pooling="attention" ranks entities with trained gated-attention scores;
+    pooling="uniform" keeps the legacy mean+max pool with the (untrained)
+    node_head ranking as an ablation arm.
+    """
+
+    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True, pooling: str = "attention") -> None:
+        super().__init__()
+        if pooling not in ("attention", "uniform"):
+            raise ValueError(f"unknown pooling mode: {pooling}")
         self.feature_dim = feature_dim
         self.hidden_dim = hidden_dim
         self.state_dim = state_dim
         self.use_s6 = use_s6
         self.use_gnn = use_gnn
+        self.pooling = pooling
         self.temporal = SelectiveSSM(feature_dim, hidden_dim, state_dim) if use_s6 else None
         self.static = (
             None
@@ -91,7 +120,8 @@ class CampaignModel(nn.Module):
             else nn.Sequential(nn.Linear(feature_dim * 2, hidden_dim), nn.GELU(), nn.LayerNorm(hidden_dim))
         )
         self.graph_layers = nn.ModuleList([ResidualGraphLayer(hidden_dim) for _ in range(2)]) if use_gnn else None
-        self.node_head = nn.Linear(hidden_dim, 1)
+        self.attention = GatedAttentionPool(hidden_dim) if pooling == "attention" else None
+        self.node_head = None if pooling == "attention" else nn.Linear(hidden_dim, 1)
         self.graph_head = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, 1))
 
     def forward(self, sequences: torch.Tensor, mask: torch.Tensor, adjacency: torch.Tensor) -> ModelOutput:
@@ -111,48 +141,79 @@ class CampaignModel(nn.Module):
         if self.graph_layers is not None:
             for layer in self.graph_layers:
                 node_state = layer(node_state, adjacency)
-        node_logits = self.node_head(node_state).squeeze(-1)
         active_nodes = (mask.sum(dim=-1) > 0).float().unsqueeze(-1)
         count = active_nodes.sum(dim=1).clamp_min(1.0)
         mean_pool = (node_state * active_nodes).sum(dim=1) / count
-        max_pool = _masked_max(node_state, active_nodes, dim=1)
-        graph_logit = self.graph_head(torch.cat([mean_pool, max_pool], dim=-1)).squeeze(-1)
+        if self.attention is not None:
+            pooled, node_logits = self.attention(node_state, active_nodes)
+        else:
+            assert self.node_head is not None
+            node_logits = self.node_head(node_state).squeeze(-1)
+            pooled = _masked_max(node_state, active_nodes, dim=1)
+        graph_logit = self.graph_head(torch.cat([mean_pool, pooled], dim=-1)).squeeze(-1)
         return ModelOutput(graph_logit=graph_logit, node_logits=node_logits)
 
 
 def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
-    """Persist weights together with the dimensions needed to rebuild the model."""
+    """Persist weights plus everything needed to rebuild the exact model variant."""
     torch.save(
         {
             "state_dict": model.state_dict(),
             "feature_dim": model.feature_dim,
             "hidden_dim": model.hidden_dim,
             "state_dim": model.state_dim,
+            "use_s6": model.use_s6,
+            "use_gnn": model.use_gnn,
+            "pooling": model.pooling,
         },
         path,
     )
 
 
 def load_campaign_model(path: str | Path) -> CampaignModel:
-    """Rebuild a hybrid CampaignModel from a checkpoint written by save_checkpoint.
+    """Rebuild a CampaignModel from any checkpoint generation.
 
-    Raw state dicts from pre-checkpoint versions are still accepted; their
-    dimensions are inferred from tensor shapes, and weights of the formerly
-    always-constructed (but unused) static branch are dropped.
+    Current checkpoints carry dims, ablation flags, and pooling mode. Raw state
+    dicts from pre-checkpoint versions are still accepted: dimensions and flags
+    are inferred from tensor shapes/keys, and weights of the formerly
+    always-constructed (but unused) static branch are dropped for S6 models.
     """
     payload = torch.load(path, map_location="cpu", weights_only=True)
+    if not isinstance(payload, dict):
+        raise ValueError(f"unrecognized checkpoint format in {path}: expected a dict payload")
     if "state_dict" in payload:
+        state_dict = payload["state_dict"]
         model = CampaignModel(
             int(payload["feature_dim"]),
             hidden_dim=int(payload["hidden_dim"]),
             state_dim=int(payload["state_dim"]),
+            use_s6=bool(payload.get("use_s6", True)),
+            use_gnn=bool(payload.get("use_gnn", True)),
+            pooling=str(payload.get("pooling", _infer_pooling(state_dict))),
         )
-        model.load_state_dict(payload["state_dict"])
+        model.load_state_dict(state_dict)
+        return model
+    use_s6 = any(key.startswith("temporal.") for key in payload)
+    if use_s6:
+        feature_dim = payload["temporal.input_proj.weight"].shape[1]
+        state_dim = payload["temporal.a_log"].shape[1]
+        kept = {key: value for key, value in payload.items() if not key.startswith("static.")}
     else:
-        model = CampaignModel(
-            payload["temporal.input_proj.weight"].shape[1],
-            hidden_dim=payload["node_head.weight"].shape[1],
-            state_dim=payload["temporal.a_log"].shape[1],
-        )
-        model.load_state_dict({key: value for key, value in payload.items() if not key.startswith("static.")})
+        feature_dim = payload["static.0.weight"].shape[1] // 2
+        state_dim = 1
+        kept = dict(payload)
+    model = CampaignModel(
+        feature_dim,
+        hidden_dim=payload["node_head.weight"].shape[1],
+        state_dim=state_dim,
+        use_s6=use_s6,
+        use_gnn=any(key.startswith("graph_layers.") for key in payload),
+        pooling="uniform",
+    )
+    model.load_state_dict(kept)
     return model
+
+
+def _infer_pooling(state_dict: dict) -> str:
+    """Checkpoints predating the pooling flag are uniform unless attention keys exist."""
+    return "attention" if any(key.startswith("attention.") for key in state_dict) else "uniform"

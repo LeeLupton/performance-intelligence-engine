@@ -17,9 +17,15 @@
     "python >= 3.11; deps: numpy, torch >= 2.2, scikit-learn; GPL-3.0-or-later"
   ],
   "inputs": {
-    "sources": ["NDJSON streams of idr_common::IdrEvent from idr-main; synthetic matched campaigns from simulator.py"],
-    "schemas": ["IdrEvent: {id, timestamp, source, severity, kind{type,...}, metadata} — validated in schema.py"],
-    "provenance": ["Simulator seeds are deterministic; event IDs are seed-derived UUIDs"]
+    "sources": [
+      "NDJSON streams of idr_common::IdrEvent from idr-main; synthetic matched campaigns from simulator.py"
+    ],
+    "schemas": [
+      "IdrEvent: {id, timestamp, source, severity, kind{type,...}, metadata} \u2014 validated in schema.py"
+    ],
+    "provenance": [
+      "Simulator seeds are deterministic; event IDs are seed-derived UUIDs"
+    ]
   },
   "outputs": [
     "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability, predicted_next_stage (rule-based), related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations",
@@ -28,84 +34,233 @@
   ],
   "architecture": {
     "components": [
-      {"module": "src/idr_intelligence/schema.py", "role": "IdrEvent validation, severity/kind priors"},
-      {"module": "src/idr_intelligence/features.py", "role": "entity extraction, typed edges, 20-dim feature vector"},
-      {"module": "src/idr_intelligence/graph.py", "role": "temporal graph: per-entity histories, normalized adjacency, evidence provenance"},
-      {"module": "src/idr_intelligence/models.py", "role": "SelectiveSSM (S6), ResidualGraphLayer, CampaignModel, checkpoint save/load"},
-      {"module": "src/idr_intelligence/simulator.py", "role": "matched benign/malicious campaign generator"},
-      {"module": "src/idr_intelligence/training.py", "role": "chronological four-way ablation trainer (HIDDEN_DIM=24, STATE_DIM=6)"},
-      {"module": "src/idr_intelligence/pipeline.py", "role": "evidence-linked scoring"},
-      {"module": "src/idr_intelligence/cli.py", "role": "demo + NDJSON score commands"}
+      {
+        "module": "src/idr_intelligence/schema.py",
+        "role": "IdrEvent validation, severity/kind priors"
+      },
+      {
+        "module": "src/idr_intelligence/features.py",
+        "role": "entity extraction, typed edges, 20-dim feature vector"
+      },
+      {
+        "module": "src/idr_intelligence/graph.py",
+        "role": "temporal graph: per-entity histories, normalized adjacency, evidence provenance"
+      },
+      {
+        "module": "src/idr_intelligence/models.py",
+        "role": "SelectiveSSM (S6), ResidualGraphLayer, CampaignModel, checkpoint save/load"
+      },
+      {
+        "module": "src/idr_intelligence/simulator.py",
+        "role": "matched benign/malicious campaign generator"
+      },
+      {
+        "module": "src/idr_intelligence/training.py",
+        "role": "chronological four-way ablation trainer (HIDDEN_DIM=24, STATE_DIM=6)"
+      },
+      {
+        "module": "src/idr_intelligence/pipeline.py",
+        "role": "evidence-linked scoring"
+      },
+      {
+        "module": "src/idr_intelligence/cli.py",
+        "role": "demo + NDJSON score commands"
+      }
     ],
     "interfaces": [
-      {"name": "IdrEvent", "version": "v1", "contract": "canonical tagged shape from idr_common; kind must contain 'type'"},
-      {"name": "checkpoint", "version": "v2", "contract": "dict {state_dict, feature_dim, hidden_dim, state_dim}; v1 raw state dicts still load with dims inferred from tensor shapes and static.* keys dropped"},
-      {"name": "TemporalGraph", "version": "v1", "contract": "node_ids, sequences [N,steps,20], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"},
-      {"name": "IntelligenceFinding", "version": "v1", "contract": "see outputs; predicted_next_stage is a heuristic lookup, not learned"}
+      {
+        "name": "IdrEvent",
+        "version": "v1",
+        "contract": "canonical tagged shape from idr_common; kind must contain 'type'"
+      },
+      {
+        "name": "checkpoint",
+        "version": "v3",
+        "contract": "dict {state_dict, feature_dim, hidden_dim, state_dim, use_s6, use_gnn, pooling}; v2 dicts lacking flags default to hybrid with pooling inferred from keys; v1 raw state dicts infer everything from tensor shapes/keys and load as pooling=uniform"
+      },
+      {
+        "name": "TemporalGraph",
+        "version": "v1",
+        "contract": "node_ids, sequences [N,steps,20], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"
+      },
+      {
+        "name": "IntelligenceFinding",
+        "version": "v1",
+        "contract": "see outputs; predicted_next_stage is a heuristic lookup, not learned"
+      }
     ],
     "decisions": [
-      {"id": "ADR-1", "decision": "Advisory-only integration; findings feed idr-sentinel, never actuate responses", "where": "docs/ARCHITECTURE.md"},
-      {"id": "ADR-2", "decision": "Explicit per-step S6 scan chosen for auditability over throughput in v0.1", "where": "reports/AUDIT.md"},
-      {"id": "ADR-3", "decision": "Masked max-pools fill with -inf so isfinite guards genuinely zero all-padding rows (was -1e9 no-op)", "where": "PR #6"},
-      {"id": "ADR-4", "decision": "Ablation variants construct only the submodules they use, keeping parameter counts honest", "where": "PR #6"},
-      {"id": "ADR-5", "decision": "Checkpoints carry their own dimensions; CLI must not hardcode hyperparameters", "where": "PR #6"},
-      {"id": "ADR-6", "decision": "campaign_id derives from chronologically first event, independent of caller ordering", "where": "PR #6"},
-      {"id": "ADR-7", "decision": "Push CI restricted to main; PR commits build once via pull_request trigger", "where": "PR #6"},
-      {"id": "ADR-8", "decision": "mypy follows the running interpreter version; pinning 3.11 breaks against numpy 2.5 PEP 695 stubs on newer Pythons", "where": "PR #6"}
+      {
+        "id": "ADR-1",
+        "decision": "Advisory-only integration; findings feed idr-sentinel, never actuate responses",
+        "where": "docs/ARCHITECTURE.md"
+      },
+      {
+        "id": "ADR-2",
+        "decision": "Explicit per-step S6 scan chosen for auditability over throughput in v0.1",
+        "where": "reports/AUDIT.md"
+      },
+      {
+        "id": "ADR-3",
+        "decision": "Masked max-pools fill with -inf so isfinite guards genuinely zero all-padding rows (was -1e9 no-op)",
+        "where": "PR #6"
+      },
+      {
+        "id": "ADR-4",
+        "decision": "Ablation variants construct only the submodules they use, keeping parameter counts honest",
+        "where": "PR #6"
+      },
+      {
+        "id": "ADR-5",
+        "decision": "Checkpoints carry their own dimensions; CLI must not hardcode hyperparameters",
+        "where": "PR #6"
+      },
+      {
+        "id": "ADR-6",
+        "decision": "campaign_id derives from chronologically first event, independent of caller ordering",
+        "where": "PR #6"
+      },
+      {
+        "id": "ADR-7",
+        "decision": "Push CI restricted to main; PR commits build once via pull_request trigger",
+        "where": "PR #6"
+      },
+      {
+        "id": "ADR-8",
+        "decision": "mypy follows the running interpreter version; pinning 3.11 breaks against numpy 2.5 PEP 695 stubs on newer Pythons",
+        "where": "PR #6"
+      },
+      {
+        "id": "ADR-9",
+        "decision": "Gated MIL attention pooling replaces mean+max in the default model: attention scores are the entity ranking, so evidence selection finally receives training gradient (node_head previously had grad=None). uniform_pool retained as fifth ablation arm; uniform path stays numerically identical to legacy checkpoints",
+        "where": "docs/ROADMAP.md W1"
+      },
+      {
+        "id": "ADR-10",
+        "decision": "Design roadmap adopted: 4 phases / 14 workstreams synthesized from 24 judged proposals; docs/ROADMAP.md is canonical. Rejected: learned next-stage head (circular supervision), dense R-GCN typed adjacency (unfalsifiable pre-Phase-2)",
+        "where": "docs/ROADMAP.md"
+      },
+      {
+        "id": "ADR-11",
+        "decision": "Checkpoints persist ablation flags and pooling mode so every trained variant round-trips (verify-workflow finding); non-dict payloads rejected with a clear error",
+        "where": "models.py save_checkpoint/load_campaign_model"
+      }
     ]
   },
   "tasks": {
     "completed": [
       "v0.1.0 package merged to main (PR #2); CI lint fix (PR #5); Ocean Reef takeoff migrated out to LeeLupton/pricing (PR #4, pricing#1)",
       "Review follow-ups + test hardening (4->14) + docstrings + mypy gate (PR #6)",
-      "state.json bootstrap (this slice)"
+      "state.json bootstrap (this slice)",
+      "Design roadmap synthesized and committed (docs/ROADMAP.md); state task graph now mirrors it",
+      "Adversarial diff verification of PR #6 (19 agents): 4 distinct upheld findings, all fixed in the W1 slice (variant round-trip, legacy-shape test, vacuous order-invariance test, roundtrip weight fidelity)",
+      "W1: attention-gated pooling + evidence_precision_at_5 metric + fifth ablation arm"
     ],
     "active": [
-      "Design-improvement roadmap synthesis (workflow wf_d3f88161-a42): 4 lenses -> 3-judge panel -> phased roadmap; integrate output into tasks.blocked as sequenced workstreams",
-      "Adversarial diff verification of PR #6 batch (workflow wf_75195b07-5f8); fold upheld findings into risks.defects"
+      "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml; schema-hash rejection on load)"
     ],
     "blocked": [
-      "Roadmap workstreams: populated from wf_d3f88161-a42 output once it completes"
+      "Phase 1 remainder: W3 calibration+ECE (after W2 manifest), W4 operating-point eval, W5 ATT&CK mapping",
+      "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
+      "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
+      "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
     ]
   },
   "evidence": {
     "commands_run": [
-      {"cmd": "python -m pytest -q", "when": "2026-07-23", "result": "14 passed"},
-      {"cmd": "ruff check src tests", "when": "2026-07-23", "result": "clean"},
-      {"cmd": "python -m mypy src", "when": "2026-07-23", "result": "no issues in 9 source files"},
-      {"cmd": "idr-intelligence demo --samples 20 --epochs 1 && score events.ndjson", "when": "2026-07-23", "result": "end-to-end pass incl. checkpoint v2 roundtrip"}
+      {
+        "cmd": "python -m pytest -q",
+        "when": "2026-07-23",
+        "result": "21 passed"
+      },
+      {
+        "cmd": "ruff check src tests",
+        "when": "2026-07-23",
+        "result": "clean"
+      },
+      {
+        "cmd": "python -m mypy src",
+        "when": "2026-07-23",
+        "result": "no issues in 9 source files"
+      },
+      {
+        "cmd": "idr-intelligence demo --samples 80 --epochs 3 (attention pooling)",
+        "when": "2026-07-23",
+        "result": "5-arm ablation + evidence_precision_at_5 + finding, end-to-end pass"
+      },
+      {
+        "cmd": "gradient probe: BCE(graph_logit).backward(); node_head.weight.grad",
+        "when": "2026-07-23",
+        "result": "None on pre-W1 model \u2014 confirmed untrained ranking defect"
+      }
     ],
-    "tests": ["tests/test_system.py: 14 tests — schema validation/rejection, graph symmetry, 4-path gradients, evidence retention, ablation smoke, checkpoint roundtrip + legacy load, CLI roundtrip + bad-line, campaign_id order-invariance, padding finiteness"],
+    "tests": [
+      "tests/test_system.py + tests/test_state_record.py: 21 tests \u2014 adds attention-gradient proof, all-variant checkpoint round-trip with output equality, true legacy-shape load (injected static.* keys), non-vacuous campaign_id order-invariance (distinct id prefixes), roundtrip weight fidelity"
+    ],
     "benchmarks": [
-      {"run": "demo --samples 80 --epochs 3, seed 7, 2026-07-23, torch 2.13 cpu", "roc_pr": "all four variants saturate at 1.0 (synthetic separability, not capability)", "brier": {"static_baseline": 0.19976, "s6_only": 0.236409, "gnn_only": 0.205985, "s6_gnn": 0.190922}}
+      {
+        "run": "demo --samples 80 --epochs 3, seed 7, 2026-07-23, attention pooling default",
+        "roc_pr": "all five variants saturate at 1.0 (synthetic separability; Phase 2 W6 exists to fix this)",
+        "brier": {
+          "static_baseline": 0.232802,
+          "s6_only": 0.242825,
+          "gnn_only": 0.229365,
+          "s6_gnn": 0.215886,
+          "s6_gnn_uniform_pool": 0.206123
+        },
+        "evidence_precision_at_5": {
+          "static_baseline": 0.8,
+          "s6_only": 0.6,
+          "gnn_only": 0.6,
+          "s6_gnn": 0.6,
+          "s6_gnn_uniform_pool": 0.6
+        },
+        "note": "ep@5 chance floor ~0.5 on 9-node graphs; 3 epochs is deliberately minimal \u2014 metric exists to make Phase 2 improvements measurable"
+      }
     ]
   },
   "risks": {
     "defects": [],
     "assumptions": [
-      "Simulator class separability makes ranking metrics uninformative at n=80; only calibration (Brier) separates variants",
-      "predicted_next_stage is a 4-rule lookup presented alongside model output; consumers must not read it as learned"
+      "Simulator class separability makes ranking metrics uninformative at n=80; only calibration (Brier) separates variants \u2014 W6 is the fix",
+      "predicted_next_stage is a 4-rule lookup presented alongside model output; W5 replaces it with an ATT&CK table, still deterministic",
+      "evidence_precision_at_5 uses multi-event entity membership as ground truth; valid for current simulator convergence design only"
     ],
     "uncertainty": [
-      "No real labeled campaigns yet; production accuracy unknown",
-      "Homogeneous message passing: relation types counted but not used in propagation",
-      "Adjacency accumulates over the whole scoring window with no time decay or versioning",
-      "delta_seconds feature is the global inter-event gap, not per-entity"
+      "No real labeled campaigns yet (W8); production accuracy unknown",
+      "Homogeneous message passing; typed variant deliberately deferred until split-host evasion scenario can falsify it (see roadmap rejection)",
+      "Adjacency accumulates over the whole window, no decay (W12); delta_seconds is global, not per-entity (W11)"
     ]
   },
   "artifacts": [
-    {"path": "docs/ARCHITECTURE.md", "role": "integration design + Rust EventKind sketch"},
-    {"path": "reports/AUDIT.md", "role": "model-risk audit and known limitations"},
-    {"path": ".github/workflows/ci.yml", "role": "Arch container CI: install, import check, pytest, ruff, mypy"},
-    {"path": "artifacts/hybrid_model.pt", "role": "checkpoint v2 (generated by demo, gitignored)"}
+    {
+      "path": "docs/ROADMAP.md",
+      "role": "canonical 4-phase/14-workstream improvement roadmap with judge scores and rejections"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "role": "integration design + Rust EventKind sketch"
+    },
+    {
+      "path": "reports/AUDIT.md",
+      "role": "model-risk audit and known limitations"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "role": "Arch container CI: install, import check, pytest, ruff, mypy"
+    },
+    {
+      "path": "artifacts/hybrid_model.pt",
+      "role": "checkpoint v2 (generated by demo, gitignored)"
+    }
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:9e50ba4597bc449d955219ed8055272dba4a0174",
+    "source_digest": "git:5db7cf1-plus-w1-slice",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "PR #6 merged; main green end-to-end (pytest+ruff+mypy); README badges live; design-roadmap and diff-verify workflows in flight"
+      "summary": "Roadmap adopted; W1 attention pooling shipped with verify-workflow fixes folded in; W2 (EngineConfig+Manifest) is next"
     }
   }
 }
