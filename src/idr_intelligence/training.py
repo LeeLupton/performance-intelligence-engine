@@ -193,22 +193,58 @@ def _fit(model: CampaignModel, train: Batch, validation: Batch, epochs: int) -> 
             best_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
     if best_state is not None:
         model.load_state_dict(best_state)
-    _fit_temperature(model, validation)
+    _fit_calibration(model, validation)
 
 
-def _fit_temperature(model: CampaignModel, validation: Batch) -> None:
-    """Grid-fit the temperature buffer on validation NLL.
+def _fit_calibration(model: CampaignModel, validation: Batch) -> None:
+    """Fit affine calibration (scale + bias) on validation NLL by LBFGS.
 
-    The grid includes T=1.0, so post-scaling validation NLL can never exceed
-    the unscaled NLL — that hard guarantee is what CI asserts.
+    Optimizing scale and bias generalizes temperature scaling: the bias absorbs
+    the constant log(pos_weight) shift that class-weighted training introduces,
+    which temperature alone cannot. The fit starts at identity and is accepted
+    only if it does not worsen validation NLL, preserving the hard guarantee
+    that post-calibration NLL never exceeds the unscaled NLL.
     """
     model.eval()
-    loss_fn = nn.BCEWithLogitsLoss()
     with torch.no_grad():
         logits = model(validation.sequences, validation.mask, validation.adjacency).graph_logit
-        candidates = torch.cat([torch.tensor([1.0]), torch.logspace(-0.7, 0.7, 29)])
-        losses = [loss_fn(logits / t, validation.labels).item() for t in candidates]
-    model.temperature.fill_(float(candidates[int(np.argmin(losses))]))
+    scale, bias = affine_calibration_params(logits, validation.labels)
+    model.temperature.fill_(1.0 / scale)
+    model.cal_bias.fill_(bias)
+
+
+def affine_calibration_params(logits: torch.Tensor, labels: torch.Tensor) -> tuple[float, float]:
+    """Fit (scale, bias) minimizing validation NLL of sigmoid(scale*logit + bias).
+
+    Optimizes from identity by LBFGS and returns identity (1.0, 0.0) unless the
+    fit strictly does not worsen NLL — so calibration can never degrade the
+    held-out NLL relative to the raw logits. Scale and bias are bounded so a
+    perfectly separable validation set cannot drive the fit to runaway
+    overconfidence; the bounds match the old temperature grid's implied range.
+    """
+    scale_min, scale_max, bias_bound = 0.2, 5.0, 5.0
+    loss_fn = nn.BCEWithLogitsLoss()
+    logits = logits.detach()
+    with torch.no_grad():
+        baseline = loss_fn(logits, labels).item()
+    log_scale = torch.zeros(1, requires_grad=True)
+    bias = torch.zeros(1, requires_grad=True)
+    optimizer = torch.optim.LBFGS([log_scale, bias], lr=0.1, max_iter=100)
+
+    def closure() -> torch.Tensor:
+        optimizer.zero_grad()
+        loss = loss_fn(logits * torch.exp(log_scale) + bias, labels)
+        loss.backward()
+        return loss
+
+    optimizer.step(closure)
+    with torch.no_grad():
+        scale = min(max(float(torch.exp(log_scale)), scale_min), scale_max)
+        fitted_bias = min(max(float(bias), -bias_bound), bias_bound)
+        fitted = loss_fn(logits * scale + fitted_bias, labels).item()
+    if fitted <= baseline:
+        return scale, fitted_bias
+    return 1.0, 0.0
 
 
 DRIFT_BIN_EDGES = [round(edge, 2) for edge in np.linspace(0.0, 1.5, 11).tolist()]
@@ -378,7 +414,19 @@ def _evaluate(model: CampaignModel, batch: Batch) -> dict[str, float]:
 
 
 def _recall_at_fpr(labels: np.ndarray, probability: np.ndarray, max_fpr: float) -> float:
-    """Highest TPR achievable while keeping FPR at or below max_fpr."""
+    """Highest TPR achievable while keeping FPR at or below max_fpr.
+
+    Degenerate single-class inputs make the ROC axes undefined; return the
+    only well-defined answer rather than a NaN that would poison the report:
+    with no positives no recall is achievable (0.0); with no negatives every
+    threshold has zero false positives, so recall 1.0 is achievable at any
+    budget.
+    """
+    positives = int(labels.sum())
+    if positives == 0:
+        return 0.0
+    if positives == len(labels):
+        return 1.0
     fpr, tpr, _ = roc_curve(labels, probability)
     admissible = tpr[fpr <= max_fpr]
     return float(admissible.max()) if admissible.size else 0.0

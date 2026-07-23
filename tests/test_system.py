@@ -136,7 +136,11 @@ def test_legacy_raw_state_dict_still_loads(tmp_path):
     ).state_dict()
     for key, value in legacy_static.items():
         legacy[f"static.{key}"] = value
+    # A genuine pre-calibration checkpoint carried neither buffer.
+    del legacy["temperature"]
+    del legacy["cal_bias"]
     assert any(key.startswith("static.") for key in legacy)
+    assert "temperature" not in legacy
     path = tmp_path / "legacy.pt"
     torch.save(legacy, path)
     loaded = load_campaign_model(path)
@@ -144,6 +148,8 @@ def test_legacy_raw_state_dict_still_loads(tmp_path):
     assert loaded.state_dim == 4
     assert loaded.feature_dim == FEATURE_DIM
     assert loaded.pooling == "uniform"
+    assert float(loaded.temperature.item()) == 1.0
+    assert float(loaded.cal_bias.item()) == 0.0
     torch.testing.assert_close(dict(loaded.state_dict())["node_head.weight"], legacy["node_head.weight"])
 
 
@@ -452,6 +458,32 @@ def test_next_stage_respects_progression_not_presence():
     assert predict_next_stage([impossible]) == "kill-chain-complete"
 
 
+def test_unmapped_kind_is_skipped_not_crashed():
+    from idr_intelligence.attack import observed_attack_stages, predict_next_stage
+
+    base = {"source": "sentinel_correlation", "severity": "HIGH", "metadata": {"host": "alpha"}}
+    triage = IdrEvent.from_dict({**base, "id": "d" * 8 + "-0000-0000-0000-000000000001", "timestamp": "2026-06-18T12:00:00Z", "kind": {"type": "triage_classification"}})
+    socket = IdrEvent.from_dict({**base, "id": "e" * 8 + "-0000-0000-0000-000000000002", "timestamp": "2026-06-18T12:05:00Z", "kind": {"type": "socket_lineage", "pid": 1}})
+    # Deliberately-unmapped kind alone yields no stages, not a KeyError.
+    assert observed_attack_stages([triage]) == ()
+    assert predict_next_stage([triage]) == "unknown"
+    # Mixed in, it is skipped and the mapped kind still drives prediction.
+    assert predict_next_stage([triage, socket]) == "persistence"
+
+
+def test_same_tactic_kinds_each_emit_a_stage():
+    from idr_intelligence.attack import observed_attack_stages
+
+    base = {"source": "network_zeek", "severity": "HIGH", "metadata": {"host": "alpha"}}
+    ntp = IdrEvent.from_dict({**base, "id": "f" * 8 + "-0000-0000-0000-000000000001", "timestamp": "2026-06-18T12:00:00Z", "kind": {"type": "ntp_time_shift"}})
+    rtc = IdrEvent.from_dict({**base, "id": "0" * 8 + "-0000-0000-0000-000000000002", "timestamp": "2026-06-18T12:05:00Z", "kind": {"type": "rtc_clock_divergence"}})
+    stages = observed_attack_stages([ntp, rtc])
+    # Both map to defense-evasion/T1562 — dedup is per kind, so two entries.
+    assert len(stages) == 2
+    assert {stage["tactic"] for stage in stages} == {"defense-evasion"}
+    assert {stage["kind_type"] for stage in stages} == {"ntp_time_shift", "rtc_clock_divergence"}
+
+
 def test_labels_are_random_but_split_safe():
     from idr_intelligence.training import _draw_labels
 
@@ -475,6 +507,30 @@ def test_operating_point_metrics_on_toys():
     assert _precision_at_k(labels, inverted, 2) == 0.0
 
 
+def test_recall_at_fpr_degenerate_and_interior():
+    from idr_intelligence.training import _recall_at_fpr
+
+    # Single-class inputs must never leak NaN into the report.
+    assert _recall_at_fpr(np.zeros(3), np.array([0.1, 0.2, 0.3]), 0.01) == 0.0
+    assert _recall_at_fpr(np.ones(3), np.array([0.1, 0.2, 0.3]), 0.01) == 1.0
+    # Interior operating point: 100 negatives at 1% FPR admits exactly 1 FP, so a
+    # positive scored above one negative but below the rest is recoverable.
+    labels = np.concatenate([np.zeros(100), np.ones(1)])
+    scores = np.concatenate([np.linspace(0.0, 0.5, 100), np.array([0.505])])
+    assert _recall_at_fpr(labels, scores, 0.01) == 1.0
+
+
+def test_precision_at_k_tie_is_deterministic():
+    from idr_intelligence.training import _precision_at_k
+
+    # A pos/neg tie at the k boundary must resolve the same way every call.
+    labels = np.array([0.0, 0.0, 1.0, 1.0])
+    scores = np.array([0.9, 0.7, 0.7, 0.3])
+    first = _precision_at_k(labels, scores, 2)
+    assert first == _precision_at_k(labels, scores, 2)
+    assert first in (0.0, 0.5)
+
+
 def test_ablation_runs_imbalanced(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     report = train_ablation(samples=24, epochs=1, seed=11, malicious_rate=0.3)
@@ -484,21 +540,47 @@ def test_ablation_runs_imbalanced(tmp_path, monkeypatch):
         assert 0.0 <= row[key] <= 1.0
 
 
-def test_temperature_fit_never_worsens_validation_nll():
-    from idr_intelligence.training import _fit_temperature, chronological_split
+def test_affine_calibration_never_worsens_and_can_improve_nll():
+    from idr_intelligence.training import affine_calibration_params
 
-    batch = make_dataset(samples=20, seed=9, max_nodes=24, max_steps=8)
-    _, validation, _ = chronological_split(batch)
-    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
-    model.eval()
     loss_fn = torch.nn.BCEWithLogitsLoss()
-    with torch.no_grad():
-        logits = model(validation.sequences, validation.mask, validation.adjacency).graph_logit
-        pre = loss_fn(logits, validation.labels).item()
-    _fit_temperature(model, validation)
-    with torch.no_grad():
-        post = loss_fn(logits / model.temperature, validation.labels).item()
+    torch.manual_seed(0)
+    # True generating logit is `latent`; labels are drawn stochastically from it,
+    # so the data is NOT perfectly separable and overconfidence is punished.
+    latent = torch.randn(2000)
+    labels = (torch.rand(2000) < torch.sigmoid(latent)).float()
+    # Overconfident + shifted logits: identity is far from optimal, and a real
+    # fit must strictly improve NLL by shrinking the 10x inflation.
+    miscalibrated = latent * 10.0 + 3.0
+    pre = loss_fn(miscalibrated, labels).item()
+    scale, bias = affine_calibration_params(miscalibrated, labels)
+    post = loss_fn(miscalibrated * scale + bias, labels).item()
     assert post <= pre + 1e-9
+    assert post < pre - 0.05
+    assert scale < 1.0  # must shrink the 10x inflation
+    # Well-calibrated logits: fit stays at (or improves on) identity, never worse.
+    s2, b2 = affine_calibration_params(latent, labels)
+    assert loss_fn(latent * s2 + b2, labels).item() <= loss_fn(latent, labels).item() + 1e-9
+
+
+def test_affine_bias_absorbs_pos_weight_shift():
+    # The blocking regression: class-weighted training shifts logits by log(w);
+    # temperature-only calibration cannot remove a constant shift, affine can.
+    from idr_intelligence.training import affine_calibration_params
+
+    torch.manual_seed(1)
+    base_rate = 0.2
+    n = 2000
+    labels = (torch.rand(n) < base_rate).float()
+    # Weighted-BCE-optimal logits for a well-fit model: logit(p) + log(w).
+    w = (1 - base_rate) / base_rate
+    p = torch.where(labels > 0, torch.full((n,), 0.9), torch.full((n,), 0.05))
+    shifted = torch.log(p / (1 - p)) + torch.log(torch.tensor(w))
+    scale, bias = affine_calibration_params(shifted, labels)
+    calibrated_mean = torch.sigmoid(shifted * scale + bias).mean().item()
+    raw_mean = torch.sigmoid(shifted).mean().item()
+    assert abs(calibrated_mean - base_rate) < abs(raw_mean - base_rate)
+    assert abs(calibrated_mean - base_rate) < 0.05
 
 
 def test_calibration_errors_zero_when_perfect():
@@ -511,31 +593,43 @@ def test_calibration_errors_zero_when_perfect():
     assert ece_bad > 0.5 and mce_bad > 0.5
 
 
-def test_temperature_roundtrips_and_defaults(tmp_path):
+def test_calibration_roundtrips_and_defaults(tmp_path):
     model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
     model.temperature.fill_(2.5)
+    model.cal_bias.fill_(-0.75)
     path = tmp_path / "calibrated.pt"
     save_checkpoint(model, path)
     payload = torch.load(path, weights_only=True)
-    assert payload["manifest"]["calibration"] == "temperature:2.500000"
+    assert payload["manifest"]["calibration"] == "affine:scale=0.400000,bias=-0.750000"
     loaded = load_campaign_model(path)
     assert float(loaded.temperature.item()) == 2.5
+    assert float(loaded.cal_bias.item()) == -0.75
+    # A pre-calibration checkpoint with neither buffer defaults to identity.
     stripped = dict(payload["state_dict"])
     del stripped["temperature"]
+    del stripped["cal_bias"]
     payload["state_dict"] = stripped
     del payload["manifest"]
     older = tmp_path / "older.pt"
     torch.save(payload, older)
-    assert float(load_campaign_model(older).temperature.item()) == 1.0
+    reloaded = load_campaign_model(older)
+    assert float(reloaded.temperature.item()) == 1.0
+    assert float(reloaded.cal_bias.item()) == 0.0
+    assert reloaded.calibration_label() == "none"
 
 
-def test_finding_reports_raw_and_calibrated():
+def test_finding_calibration_matches_affine_transform():
     model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
     model.temperature.fill_(2.0)
+    model.cal_bias.fill_(0.5)
     finding = score_events(simulate_campaign(label=1, seed=8), model)
-    assert finding.calibration == "temperature:2.000000"
+    assert finding.calibration == "affine:scale=0.500000,bias=0.500000"
     raw, calibrated = finding.raw_escalation_probability, finding.escalation_probability
-    assert abs(calibrated - 0.5) <= abs(raw - 0.5) + 1e-9
+    assert raw != calibrated
+    # Recover the logit from raw and confirm calibrated == sigmoid(logit/T + bias).
+    logit = np.log(raw / (1 - raw))
+    expected = 1.0 / (1.0 + np.exp(-(logit / 2.0 + 0.5)))
+    assert abs(calibrated - expected) < 1e-4
 
 
 def test_attention_ranking_receives_training_gradient():

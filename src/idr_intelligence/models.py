@@ -124,12 +124,29 @@ class CampaignModel(nn.Module):
         self.node_head = None if pooling == "attention" else nn.Linear(hidden_dim, 1)
         self.graph_head = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, 1))
         self.temperature: torch.Tensor
+        self.cal_bias: torch.Tensor
         self.register_buffer("temperature", torch.ones(1))
+        self.register_buffer("cal_bias", torch.zeros(1))
         self.feature_stats: dict | None = None
 
     def calibrated_probability(self, logits: torch.Tensor) -> torch.Tensor:
-        """Temperature-scaled probability; T is fitted on validation NLL in training."""
-        return torch.sigmoid(logits / self.temperature.clamp_min(1e-3))
+        """Affine (Platt) calibrated probability: sigmoid(logit / T + bias).
+
+        The bias term is load-bearing: training weights the loss by pos_weight,
+        which shifts every logit by a constant log(w). A scale-only rescale
+        (temperature alone) cannot remove a constant shift, so the bias is what
+        lets calibrated probabilities track true frequencies under imbalance.
+        Identity (T=1, bias=0) leaves logits untouched for uncalibrated models.
+        """
+        return torch.sigmoid(logits / self.temperature.clamp_min(1e-3) + self.cal_bias)
+
+    def calibration_label(self) -> str:
+        """Single source of truth for the calibration string in checkpoints and findings."""
+        temperature = float(self.temperature.item())
+        bias = float(self.cal_bias.item())
+        if temperature == 1.0 and bias == 0.0:
+            return "none"
+        return f"affine:scale={1.0 / temperature:.6f},bias={bias:.6f}"
 
     def forward(self, sequences: torch.Tensor, mask: torch.Tensor, adjacency: torch.Tensor) -> ModelOutput:
         batch, nodes, steps, features = sequences.shape
@@ -165,8 +182,6 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
     """Persist weights, the exact model variant, and a provenance manifest."""
     from .registry import ModelManifest
 
-    temperature = float(model.temperature.item())
-    calibration = "none" if temperature == 1.0 else f"temperature:{temperature:.6f}"
     torch.save(
         {
             "state_dict": model.state_dict(),
@@ -176,7 +191,7 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
             "use_s6": model.use_s6,
             "use_gnn": model.use_gnn,
             "pooling": model.pooling,
-            "manifest": ModelManifest.create(calibration=calibration).to_dict(),
+            "manifest": ModelManifest.create(calibration=model.calibration_label()).to_dict(),
             "feature_stats": model.feature_stats,
         },
         path,
@@ -201,6 +216,7 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
     if "state_dict" in payload:
         state_dict = dict(payload["state_dict"])
         state_dict.setdefault("temperature", torch.ones(1))
+        state_dict.setdefault("cal_bias", torch.zeros(1))
         model = CampaignModel(
             int(payload["feature_dim"]),
             hidden_dim=int(payload["hidden_dim"]),
@@ -222,6 +238,7 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
         state_dim = 1
         kept = dict(payload)
     kept.setdefault("temperature", torch.ones(1))
+    kept.setdefault("cal_bias", torch.zeros(1))
     model = CampaignModel(
         feature_dim,
         hidden_dim=payload["node_head.weight"].shape[1],
