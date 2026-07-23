@@ -28,7 +28,7 @@
     ]
   },
   "outputs": [
-    "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability (affine-calibrated), raw_escalation_probability, calibration, predicted_next_stage (ATT&CK), observed_attack_stages, related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations, engine_version, feature_schema_hash, scored_at, feature_drift; entity_evidence (per-entity why: occlusion features, typed edges, ATT&CK); applied_suppressions",
+    "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability (affine-calibrated), raw_escalation_probability, calibration, predicted_next_stage (ATT&CK), observed_attack_stages, related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations, engine_version, feature_schema_hash, scored_at, feature_drift, continues_campaign, windows_observed; entity_evidence (per-entity why: occlusion features, typed edges, ATT&CK); applied_suppressions",
     "Ablation benchmark report (training.py, reports/demo.json) with per-scenario generalization and rolling-origin CV verdict",
     "Checkpoint artifacts/hybrid_model.pt (dict: state_dict incl. temperature+cal_bias buffers, dims, use_s6/use_gnn/pooling, manifest, feature_stats)"
   ],
@@ -93,6 +93,10 @@
       {
         "module": "src/idr_intelligence/evidence.py",
         "role": "structured per-entity evidence (occlusion attribution, typed edges, ATT&CK) + suppression allowlist"
+      },
+      {
+        "module": "src/idr_intelligence/campaigns.py",
+        "role": "cross-window campaign identity: durable-entity fingerprints, weighted-Jaccard matcher, content-addressed IDs, JSON-persisted CampaignRegistry"
       }
     ],
     "interfaces": [
@@ -113,8 +117,13 @@
       },
       {
         "name": "IntelligenceFinding",
-        "version": "v6",
-        "contract": "v5 fields + entity_evidence [{entity, node_probability, evidence_event_ids, related_edges [{peer,relation}], top_features [{feature,attribution}], attack_techniques}] and applied_suppressions; flat related_entities/evidence_event_ids kept for back-compat"
+        "version": "v7",
+        "contract": "v6 fields + continues_campaign (bool) and windows_observed (int), populated when score_events receives a CampaignRegistry; without one they default to False/1 and campaign_id stays the per-call first-event derivation — additive, back-compat"
+      },
+      {
+        "name": "CampaignRegistry",
+        "version": "v1",
+        "contract": "JSON {records: [{campaign_id, fingerprint {entity: weight}, windows_observed, first_seen, last_seen}]}; match_or_register(entities, scored_at) -> (campaign_id, continues, windows): weighted Jaccard >= 0.5 over durable entities (process:/session: excluded; hash 3.0 > domain/user 2.5 > ip/cloud 2.0 > prefix/asn 1.5 > device 1.0 > host 0.5) continues and unions the best match, else registers a blake2s content-addressed id; empty fingerprint -> sentinel idr-campaign-unfingerprinted, never registered"
       },
       {
         "name": "LabeledWindow",
@@ -257,6 +266,11 @@
         "id": "ADR-27",
         "decision": "W13 S6 step() cell: SelectiveSSM refactored so a single _recurrence path is shared by forward (loops it with input_proj hoisted over the whole sequence) and a public step(x_t, state, output, active, delta_t) cell for streaming/export. initial_state() gives a fresh (state, output); snapshot/restore is lossless. Numerical-equivalence test asserts looping step() == forward for both time modes; forward output is bit-identical to the pre-refactor loop so benchmark floors are unchanged. This is the prerequisite for W15 streaming and W17 ONNX/Rust export (one code path, no train/serve skew). Heavy throughput work (associative scan, torch.compile) deferred per roadmap",
         "where": "docs/ROADMAP.md W13"
+      },
+      {
+        "id": "ADR-28",
+        "decision": "W16 campaign identity is deterministic set-matching, not a model: durable-entity fingerprints (weighted by continuity strength — hash/domain/user outweigh host; ephemeral process:/session: excluded) matched by weighted Jaccard at 0.5. A match continues the campaign (fingerprint unioned so identity follows infrastructure as it grows), a miss registers a blake2s content-addressed id (order-independent, reproducible). The registry is opt-in (score_events(registry=...), CLI --registry PATH load->match->save); without it findings behave exactly as before. Sentinel id for windows with no durable entities. Auditable by construction — idr-sentinel can recompute every match decision from the finding + registry JSON",
+        "where": "docs/ROADMAP.md W16"
       }
     ]
   },
@@ -284,13 +298,13 @@
       "Benchmark hardening: stale_preamble + timing_only scenarios; VERIFIED temporal physics (W11/W12) undifferentiated on synthetic data (global beats time-aware on timing_only 0.186 vs 0.210); documented in AUDIT.md",
       "Flip default time_mode time_aware->global (evidence-driven, ADR-26); benchmark floors green; default locked by test",
       "v0.1 consolidation: README refreshed to match the shipped engine (capabilities, all CLI subcommands, full repo map, honest temporal-physics note, updated resume bullet)",
-      "W13: S6 step() cell (shared _recurrence, streaming step(), lossless snapshot/restore, numerical equivalence to forward) \u2014 enables W15/W17"
+      "W13: S6 step() cell (shared _recurrence, streaming step(), lossless snapshot/restore, numerical equivalence to forward) \u2014 enables W15/W17",
+      "W16: campaign-identity registry (campaigns.py; weighted durable-entity fingerprint matching, content-addressed IDs, opt-in via score_events(registry=)/CLI --registry; finding v7 adds continues_campaign + windows_observed)"
     ],
     "active": [
-      "W16: campaign-identity registry (stable IDs across scoring windows via entity-fingerprint matching; independent, pure-Python, useful now) OR W15 streaming scorer"
+      "W15 streaming scorer (streaming.py: EntityState + StreamingScorer over W13 step() + bounded_graph; sparse adjacency + replay-wrapper deferred from W12 land here)"
     ],
     "blocked": [
-      "W15 streaming scorer (uses W13 step() + bounded_graph)",
       "W17 ONNX export + Rust bridge (uses W13 step(); NEEDS user machine \u2014 Rust toolchain + idr-main)"
     ]
   },
@@ -299,21 +313,21 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "84 passed"
+        "result": "91 passed"
       },
       {
-        "cmd": "ruff check src tests && mypy src",
+        "cmd": "ruff check src tests && python -m mypy src",
         "when": "2026-07-23",
-        "result": "clean; 16 source files"
+        "result": "clean; 17 source files"
       },
       {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "passed, 0 violations (forward output bit-identical after refactor)"
+        "result": "passed, 0 violations (registry is opt-in; scoring path unchanged without it)"
       }
     ],
     "tests": [
-      "tests: 84 \u2014 adds step()-loop==forward numerical equivalence (both time modes) and lossless mid-scan snapshot/restore"
+      "tests: 91 \u2014 adds W16 coverage: durable-vs-ephemeral fingerprinting, host-only insufficient / infrastructure sufficient matching, order-independent content addressing, cross-window continuity + new-campaign registration + sentinel, persistence round-trip, score_events registry stability, CLI --registry across invocations"
     ],
     "benchmarks": [
       {
@@ -415,11 +429,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:b9299e4-plus-w13",
+    "source_digest": "git:8718616-plus-w16",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "Resumed production path: W13 S6 step() cell shipped (streaming/export prerequisite, forward unchanged). W16 or W15 next; W17 Rust bridge will need the user's machine"
+      "summary": "W16 campaign-identity registry shipped: stable cross-window campaign IDs by weighted durable-entity fingerprint matching; finding v7 adds continues_campaign/windows_observed. W15 streaming next; W17 Rust bridge will need the user's machine"
     }
   }
 }

@@ -1055,3 +1055,113 @@ def test_padding_nodes_stay_finite():
         output = model(batch.sequences[:2], batch.mask[:2], batch.adjacency[:2])
         assert torch.isfinite(output.graph_logit).all()
         assert torch.isfinite(output.node_logits).all()
+
+
+def test_campaign_fingerprint_keeps_durable_drops_ephemeral():
+    from idr_intelligence.campaigns import fingerprint
+
+    prints = fingerprint(["hash:abc", "process:alpha:12", "session:alpha:5", "host:alpha", "domain:evil.example"])
+    assert set(prints) == {"hash:abc", "host:alpha", "domain:evil.example"}
+    assert prints["hash:abc"] > prints["host:alpha"]  # infrastructure outweighs workstation identity
+
+
+def test_weighted_jaccard_host_only_insufficient_infrastructure_sufficient():
+    from idr_intelligence.campaigns import MATCH_THRESHOLD, fingerprint, weighted_jaccard
+
+    known = fingerprint(["hash:abc", "domain:evil.example", "host:alpha"])
+    # Same C2 infrastructure seen from a different host: continues the campaign.
+    same_infra = fingerprint(["hash:abc", "domain:evil.example", "host:beta"])
+    assert weighted_jaccard(same_infra, known) >= MATCH_THRESHOLD
+    # Only the workstation in common: not enough to claim continuity.
+    host_only = fingerprint(["host:alpha", "ip:203.0.113.99"])
+    assert weighted_jaccard(host_only, known) < MATCH_THRESHOLD
+    assert weighted_jaccard({}, known) == 0.0
+
+
+def test_campaign_content_address_is_order_independent():
+    from idr_intelligence.campaigns import content_address, fingerprint
+
+    forward = content_address(fingerprint(["hash:abc", "domain:evil.example", "host:alpha"]))
+    shuffled = content_address(fingerprint(["host:alpha", "hash:abc", "domain:evil.example"]))
+    other = content_address(fingerprint(["hash:other", "host:alpha"]))
+    assert forward == shuffled
+    assert forward.startswith("idr-campaign-")
+    assert forward != other
+
+
+def test_registry_continues_matching_campaign_and_registers_new_ones():
+    from idr_intelligence.campaigns import CampaignRegistry
+
+    registry = CampaignRegistry()
+    first_id, continues, windows = registry.match_or_register(["hash:abc", "domain:evil.example", "host:alpha"], "2026-07-01T00:00:00+00:00")
+    assert (continues, windows) == (False, 1)
+    # Same infrastructure on a new host a day later: same campaign, window count grows.
+    second_id, continues, windows = registry.match_or_register(["hash:abc", "domain:evil.example", "host:beta"], "2026-07-02T00:00:00+00:00")
+    assert second_id == first_id
+    assert (continues, windows) == (True, 2)
+    assert registry.records[0].last_seen == "2026-07-02T00:00:00+00:00"
+    assert "host:beta" in registry.records[0].fingerprint  # fingerprint unions across windows
+    # Unrelated infrastructure: a distinct campaign identity.
+    third_id, continues, windows = registry.match_or_register(["hash:zzz", "domain:other.example", "host:alpha"], "2026-07-02T01:00:00+00:00")
+    assert third_id != first_id
+    assert (continues, windows) == (False, 1)
+    # No durable entities at all: sentinel id, never registered.
+    ghost_id, continues, _ = registry.match_or_register(["process:alpha:12", "session:alpha:5"], "2026-07-02T02:00:00+00:00")
+    assert ghost_id == "idr-campaign-unfingerprinted"
+    assert not continues
+    assert len(registry.records) == 2
+
+
+def test_registry_persistence_roundtrip(tmp_path):
+    from idr_intelligence.campaigns import CampaignRegistry
+
+    path = tmp_path / "registry.json"
+    assert CampaignRegistry.load(path).records == []  # missing file -> empty registry
+    registry = CampaignRegistry()
+    original_id, _, _ = registry.match_or_register(["hash:abc", "domain:evil.example"], "2026-07-01T00:00:00+00:00")
+    registry.save(path)
+    reloaded = CampaignRegistry.load(path)
+    matched_id, continues, windows = reloaded.match_or_register(["hash:abc", "domain:evil.example", "host:beta"], "2026-07-02T00:00:00+00:00")
+    assert matched_id == original_id
+    assert (continues, windows) == (True, 2)
+
+
+def test_score_events_with_registry_keeps_campaign_identity_stable():
+    from idr_intelligence.campaigns import CampaignRegistry
+
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    events = simulate_campaign(label=1, seed=8)
+    registry = CampaignRegistry()
+    first = score_events(events, model, registry=registry)
+    second = score_events(events, model, registry=registry)
+    assert first.campaign_id == second.campaign_id
+    assert (first.continues_campaign, first.windows_observed) == (False, 1)
+    assert (second.continues_campaign, second.windows_observed) == (True, 2)
+    # Without a registry the per-call id and defaults are unchanged (back-compat).
+    solo = score_events(events, model)
+    assert solo.campaign_id == f"idr-campaign-{min(events, key=lambda e: (e.timestamp, e.id)).id[:8]}"
+    assert (solo.continues_campaign, solo.windows_observed) == (False, 1)
+
+
+def test_cli_score_registry_persists_across_invocations(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    lines = []
+    for event in simulate_campaign(1, 5):
+        lines.append(json.dumps({
+            "id": event.id, "timestamp": event.timestamp.isoformat(), "source": event.source,
+            "severity": event.severity, "kind": event.kind, "metadata": event.metadata,
+        }))
+    events_path.write_text("\n".join(lines) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4), weights)
+    registry_path = tmp_path / "registry.json"
+    argv = ["idr-intelligence", "score", str(events_path), "--weights", str(weights), "--registry", str(registry_path)]
+    monkeypatch.setattr("sys.argv", argv)
+    cli.main()
+    first = json.loads(capsys.readouterr().out)
+    assert registry_path.exists()
+    cli.main()
+    second = json.loads(capsys.readouterr().out)
+    assert second["campaign_id"] == first["campaign_id"]
+    assert (first["continues_campaign"], first["windows_observed"]) == (False, 1)
+    assert (second["continues_campaign"], second["windows_observed"]) == (True, 2)

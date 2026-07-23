@@ -27,6 +27,7 @@ It is designed to answer a concrete question:
 - **Honest evaluation** — a five-arm chronological ablation with calibration (ECE, log-loss) and operating-point (recall@FPR, precision@k) metrics; cross-scenario generalization over 11 simulator families; rolling-origin cross-validation that reports a statistical verdict (or an honest "tie"); and a frozen benchmark manifest whose regression floors fail CI on every build.
 - **Real-data path** — `LabeledWindow` ingestion (`--data`) swaps the simulator for real `*.labeled.ndjson` campaigns with zero model changes.
 - **Deployment controls** — an analyst suppression allowlist that attenuates entities out of the ranking without hiding the finding or touching the campaign probability; a bounded, audited node budget for streaming memory.
+- **Campaign identity across windows** — an opt-in registry (`--registry`) that matches each window's durable-entity fingerprint (hashes, domains, users weigh most; ephemeral processes/sessions excluded) against known campaigns by weighted Jaccard, so `idr-sentinel` can accumulate corroboration for one hypothesis over days instead of treating every scoring call as a new campaign. Deterministic set-matching — every decision is recomputable from the registry JSON.
 
 The simulator uses event families already present in `idr-main` (`socket_lineage`, `suspicious_beacon`, `bgp_anomaly`, `ntp_time_shift`, `hsts_time_manipulation`, `nvme_latency_anomaly`, …) and 11 scenario families spanning graded difficulty, hard negatives, evasion (low-and-slow, split-host, hash-rotation), identity-pivot lateral movement, and timing-only discrimination.
 
@@ -45,6 +46,7 @@ idr-intelligence demo --samples 80 --epochs 3 --output reports/demo.json
 ```bash
 idr-intelligence score events.ndjson --weights artifacts/hybrid_model.pt   # score an NDJSON export (each line a serialized IdrEvent)
 idr-intelligence score events.ndjson --suppress 'ip:' --suppress host:known-scanner  # analyst allowlist
+idr-intelligence score events.ndjson --registry campaigns.json               # stable campaign ids across windows (registry updated in place)
 idr-intelligence benchmark --manifest benchmarks/v1.json                    # frozen regression floors; exit 1 on violation (runs in CI)
 idr-intelligence ablation --folds 3 --replicates 3                          # rolling-origin CV with a statistical best-model verdict
 idr-intelligence time-ablation --scenario timing_only                       # global vs per-entity vs time-aware S6
@@ -90,6 +92,7 @@ src/idr_intelligence/benchmark.py   frozen-manifest regression floors (CI gate)
 src/idr_intelligence/dataio.py      *.labeled.ndjson real-campaign ingestion
 src/idr_intelligence/pipeline.py    evidence-linked, calibrated scoring
 src/idr_intelligence/evidence.py    per-entity evidence (occlusion, edges, ATT&CK) + suppression
+src/idr_intelligence/campaigns.py   cross-window campaign identity (fingerprint registry)
 src/idr_intelligence/cli.py         demo · score · benchmark · ablation · time/decay-ablation
 benchmarks/v1.json                  frozen benchmark manifest with regression floors
 docs/ARCHITECTURE.md                integration design + Rust EventKind contract
