@@ -73,6 +73,10 @@
       {
         "module": "src/idr_intelligence/registry.py",
         "role": "ModelManifest, feature_schema_hash, SchemaMismatchError"
+      },
+      {
+        "module": "src/idr_intelligence/attack.py",
+        "role": "deterministic kind->ATT&CK tactic/technique table, observed stages, next-stage prediction"
       }
     ],
     "interfaces": [
@@ -93,8 +97,8 @@
       },
       {
         "name": "IntelligenceFinding",
-        "version": "v3",
-        "contract": "v2 fields + raw_escalation_probability and calibration (method:value); escalation_probability is temperature-calibrated"
+        "version": "v4",
+        "contract": "v3 fields + observed_attack_stages [{tactic, technique, kind_type, first_event_id}]; predicted_next_stage is now the next unobserved ATT&CK tactic after the furthest observed (deterministic table in attack.py, never learned)"
       }
     ],
     "decisions": [
@@ -167,6 +171,11 @@
         "id": "ADR-14",
         "decision": "Dataset labels are seeded random draws with a deterministic retry guaranteeing both classes in every chronological segment (the former index%2 alternation leaked parity across split boundaries); _fit weights BCE by neg/pos, calibration stays unweighted so probabilities match true frequencies; _evaluate adds recall@FPR{1%,0.1%} and precision@5",
         "where": "docs/ROADMAP.md W4"
+      },
+      {
+        "id": "ADR-15",
+        "decision": "Next-stage stays deterministic per the roadmap's rejection of the learned head: attack.py maps 11 of 12 kinds to ATT&CK tactic/technique (triage_classification is a correlator meta-event, deliberately unmapped); prediction advances past the furthest observed tactic, fixing the old presence-lookup's order blindness",
+        "where": "docs/ROADMAP.md W5"
       }
     ]
   },
@@ -180,10 +189,11 @@
       "W1: attention-gated pooling + evidence_precision_at_5 metric + fifth ablation arm",
       "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml, provenance fields on findings, schema-hash rejection on load)",
       "W3: temperature calibration (validation-NLL grid, T buffer in state_dict, manifest calibration string) + ECE/log-loss/MCE metrics + raw/calibrated finding fields",
-      "W4: seeded random labels + pos_weight + recall@FPR and precision@k operating-point metrics; CLI --malicious-rate"
+      "W4: seeded random labels + pos_weight + recall@FPR and precision@k operating-point metrics; CLI --malicious-rate",
+      "W5: ATT&CK mapping (attack.py) \u2014 Phase 1 complete"
     ],
     "active": [
-      "W5: ATT&CK-native next-stage mapping \u2014 kind->technique/tactic table, timestamp-ordered observed_attack_stages, next unobserved kill-chain tactic (closes Phase 1)"
+      "W6: graded + adversarial simulator scenarios (convergence knob, distractors, hard negatives, variable length, low-and-slow / split-host / hash-rotation evasion families) \u2014 opens Phase 2"
     ],
     "blocked": [
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
@@ -197,7 +207,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "33 passed"
+        "result": "36 passed"
       },
       {
         "cmd": "ruff check src tests",
@@ -207,16 +217,16 @@
       {
         "cmd": "python -m mypy src",
         "when": "2026-07-23",
-        "result": "no issues in 11 source files"
+        "result": "no issues in 12 source files"
       },
       {
-        "cmd": "idr-intelligence demo --samples 80 --epochs 3 --malicious-rate 0.25",
+        "cmd": "idr-intelligence demo --samples 20 --epochs 1",
         "when": "2026-07-23",
-        "result": "imbalanced end-to-end pass; v0_easy still saturates recall@FPR and p@5 at 1.0 as the roadmap predicted (W6 exists to fix this)"
+        "result": "finding narrates 6 ATT&CK stages in timestamp order; predicted_next_stage=impact"
       }
     ],
     "tests": [
-      "tests: 33 \u2014 adds split-safe random-label determinism, recall@FPR/precision@k toy correctness, imbalanced ablation smoke"
+      "tests: 36 \u2014 adds ATT&CK table coverage (11/12 kinds, meta-kind exemption), time-ordered stages with evidence anchors, progression-not-presence next-stage semantics incl. kill-chain-complete"
     ],
     "benchmarks": [
       {
@@ -296,7 +306,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W3 merged (PR #10); W4 operating-point evaluation implemented; W5 ATT&CK mapping closes Phase 1 next"
+      "summary": "W4 merged (PR #11); W5 ATT&CK mapping implemented \u2014 Phase 1 complete; Phase 2 opens with W6 simulator hardening"
     }
   }
 }

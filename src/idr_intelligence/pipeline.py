@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 import numpy as np
 import torch
 
+from typing import Any
+
+from .attack import observed_attack_stages, predict_next_stage
 from .config import DEFAULT_CONFIG, ENGINE_VERSION
 from .graph import build_temporal_graph
 from .models import CampaignModel
@@ -24,6 +27,7 @@ class IntelligenceFinding:
     raw_escalation_probability: float
     calibration: str
     predicted_next_stage: str
+    observed_attack_stages: tuple[dict[str, Any], ...]
     related_entities: tuple[str, ...]
     evidence_event_ids: tuple[str, ...]
     model_version: str
@@ -66,7 +70,8 @@ def score_events(
         escalation_probability=round(probability, 6),
         raw_escalation_probability=round(raw_probability, 6),
         calibration=calibration,
-        predicted_next_stage=_next_stage(events),
+        predicted_next_stage=predict_next_stage(events),
+        observed_attack_stages=observed_attack_stages(events),
         related_entities=related,
         evidence_event_ids=evidence,
         model_version=model_version,
@@ -78,15 +83,3 @@ def score_events(
     )
 
 
-def _next_stage(events: list[IdrEvent]) -> str:
-    """Rule-based (not learned) next-stage hypothesis from the kinds present."""
-    kinds = {event.kind_type for event in events}
-    if "nvme_latency_anomaly" in kinds:
-        return "impact_or_exfiltration"
-    if "hsts_time_manipulation" in kinds or "ntp_time_shift" in kinds:
-        return "credential_or_session_manipulation"
-    if "suspicious_beacon" in kinds:
-        return "command_and_control"
-    if "socket_lineage" in kinds:
-        return "execution_or_initial_access"
-    return "unknown"
