@@ -336,6 +336,58 @@ def test_drift_is_none_without_snapshot():
     assert finding.feature_drift is None
 
 
+def test_identity_entities_and_edges():
+    from idr_intelligence.features import extract_entities
+
+    event = IdrEvent.from_dict({
+        "id": "d34db33f-0000-0000-0000-000000000001",
+        "timestamp": "2026-06-18T12:00:00Z", "source": "kernel_ebpf", "severity": "HIGH",
+        "kind": {"type": "socket_lineage", "pid": 12, "user": "SvcAccount", "session_id": 4, "arn": "aws:iam::role/x", "dst_ip": "203.0.113.9"},
+        "metadata": {"host": "alpha"},
+    })
+    entities = extract_entities(event)
+    assert "user:svcaccount" in entities          # global, host-independent
+    assert "session:alpha:4" in entities           # host-scoped
+    assert "cloud:aws:iam::role/x" in entities
+    graph = build_temporal_graph([event])
+    assert "authenticates_to" in graph.relation_counts
+    assert "owns" in graph.relation_counts
+    assert "spawns" in graph.relation_counts
+    assert "accesses" in graph.relation_counts
+
+
+def test_identity_features_set():
+    from idr_intelligence.features import FEATURE_NAMES, project_event
+
+    idx_user = FEATURE_NAMES.index("has_user")
+    idx_pivot = FEATURE_NAMES.index("has_identity_pivot")
+    with_user = IdrEvent.from_dict({
+        "id": "a" * 8 + "-0000-0000-0000-000000000001", "timestamp": "2026-06-18T12:00:00Z",
+        "source": "kernel_ebpf", "severity": "HIGH",
+        "kind": {"type": "socket_lineage", "pid": 1, "user": "svc", "dst_ip": "203.0.113.9"}, "metadata": {"host": "a"},
+    })
+    without = IdrEvent.from_dict({
+        "id": "b" * 8 + "-0000-0000-0000-000000000002", "timestamp": "2026-06-18T12:00:00Z",
+        "source": "kernel_ebpf", "severity": "HIGH", "kind": {"type": "socket_lineage", "pid": 1}, "metadata": {"host": "a"},
+    })
+    assert project_event(with_user).features[idx_user] == 1.0
+    assert project_event(with_user).features[idx_pivot] == 1.0   # user + dst_ip
+    assert project_event(without).features[idx_user] == 0.0
+    assert project_event(without).features[idx_pivot] == 0.0
+
+
+def test_lateral_movement_links_only_via_user():
+    events = simulate_campaign(1, 9, scenario="lateral_movement")
+    graph = build_temporal_graph(events)
+    assert len({event.metadata["host"] for event in events}) == 6
+    users = {node for node in graph.node_ids if node.startswith("user:")}
+    assert len(users) == 1                                        # one actor spans every host
+    # Benign twin: a distinct user per stage, so identity links nothing.
+    benign = simulate_campaign(0, 9, scenario="lateral_movement")
+    benign_users = {node for node in build_temporal_graph(benign).node_ids if node.startswith("user:")}
+    assert len(benign_users) == len(benign)
+
+
 def test_v0_easy_scenario_keeps_original_semantics():
     events = simulate_campaign(1, 5)
     assert events == simulate_campaign(1, 5, scenario="v0_easy")

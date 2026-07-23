@@ -32,6 +32,7 @@ SCENARIOS = (
     "low_and_slow",
     "split_host",
     "hash_rotation",
+    "lateral_movement",
 )
 
 
@@ -116,6 +117,11 @@ def simulate_campaign(
     elif scenario == "hash_rotation" and label:
         hashes = [f"{stage:08x}{seed:056x}"[-64:] for stage in (0xA1, 0xA3)]
         pids = [process_id, process_id + 17]
+    elif scenario == "lateral_movement" and label:
+        # Scatter every infrastructure signal; only the shared user connects the stages.
+        hosts = list(scatter_hosts)
+        ips = list(scatter_ips)
+        hashes = [campaign_hash, f"cafebabe{seed:056x}"[-64:]]
 
     add(times[0], "kernel_ebpf", "HIGH", {
         "type": "socket_lineage", "pid": pids[0], "tgid": pids[0],
@@ -162,6 +168,14 @@ def simulate_campaign(
                 "dst_ip": f"198.51.100.{(seed + noise_index * 13) % 90 + 1}", "dst_port": 443,
                 "is_signed": True,
             }, primary_host, 6 + noise_index)
+
+    if scenario == "lateral_movement":
+        # Malicious: one actor across all hosts. Benign: a distinct actor per
+        # host, so identity provides no cross-host link.
+        shared_user = f"svc-account-{seed % 23:02d}"
+        for event in events:
+            event.kind["user"] = shared_user if label else f"local-user-{event.metadata['stage_index']}"
+            event.kind["target_host"] = event.metadata["host"]
 
     if scenario == "truncated":
         stage_reached = 2 + seed % 5

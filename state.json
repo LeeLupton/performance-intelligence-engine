@@ -40,7 +40,7 @@
       },
       {
         "module": "src/idr_intelligence/features.py",
-        "role": "entity extraction, typed edges, 20-dim feature vector"
+        "role": "entity extraction (host/process/hash/ip/prefix/asn/domain/device + user/session/cloud identity), typed edges, 22-dim feature vector"
       },
       {
         "module": "src/idr_intelligence/graph.py",
@@ -52,7 +52,7 @@
       },
       {
         "module": "src/idr_intelligence/simulator.py",
-        "role": "8 scenario families: v0_easy, graded, distractor, legit_update, truncated, low_and_slow, split_host, hash_rotation; per-event scenario + stage_index ground truth"
+        "role": "9 scenario families incl. lateral_movement (identity-only pivot); per-event scenario + stage_index ground truth"
       },
       {
         "module": "src/idr_intelligence/training.py",
@@ -101,7 +101,7 @@
       {
         "name": "TemporalGraph",
         "version": "v1",
-        "contract": "node_ids, sequences [N,steps,20], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"
+        "contract": "node_ids, sequences [N,steps,22], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"
       },
       {
         "name": "IntelligenceFinding",
@@ -214,6 +214,11 @@
         "id": "ADR-20",
         "decision": "Calibration is affine (scale + bias), not temperature-only: adversarial verification proved a pure scale cannot undo the constant log(pos_weight) shift that class-weighted training introduces, so calibrated probabilities were inflated under imbalance. affine_calibration_params fits both by LBFGS from identity, bounded to scale in [0.2,5] and bias in [-5,5] to prevent separable-data runaway, accepted only if validation NLL does not worsen. Single calibration_label() method shared by checkpoint and finding. cal_bias buffer added; older checkpoints default it to 0",
         "where": "verification wk3kr3oza finding #1 (blocking)"
+      },
+      {
+        "id": "ADR-21",
+        "decision": "Identity entities: user: (global \u2014 the same actor links events across hosts, the load-bearing lateral-movement pivot), session:{host}:{sid}, cloud: nodes with authenticates_to/owns/spawns/accesses edges; has_user + has_identity_pivot features (FEATURE_DIM 20->22, schema hash rotates, checkpoints regenerate). lateral_movement scenario scatters all infrastructure so only the shared user connects the campaign; cross-host linkage is structural (global user node), not a per-event feature",
+        "where": "docs/ROADMAP.md W10 \u2014 closes Phase 2"
       }
     ]
   },
@@ -233,15 +238,15 @@
       "W7: versioned benchmark suite (benchmarks/v1.json, runner, CI gate) + feature-snapshot drift on findings",
       "W8: LabeledWindow schema + dataio loader + --data training path",
       "W9: rolling-origin CV + replicates with statistical best-model verdict (CLI: ablation)",
-      "Verification fixes (wk3kr3oza, 12 upheld): affine calibration replacing broken temperature-only [BLOCKING], degenerate recall@FPR handling, Rust sketch + state.json contract sync [BLOCKING], attack docstring, and 5 vacuous/tautological tests rewritten to fail on real regressions [2 BLOCKING]"
+      "Verification fixes (wk3kr3oza, 12 upheld): affine calibration replacing broken temperature-only [BLOCKING], degenerate recall@FPR handling, Rust sketch + state.json contract sync [BLOCKING], attack docstring, and 5 vacuous/tautological tests rewritten to fail on real regressions [2 BLOCKING]",
+      "W10: identity entities (user/session/cloud) + edges + features + lateral_movement scenario \u2014 Phase 2 complete"
     ],
     "active": [
-      "W10: identity entities \u2014 user:/session:/cloud: nodes, authenticates_to/owns/spawns edges, has_user/cross_host_user features, lateral-movement scenario (closes Phase 2)"
+      "W11: per-entity time deltas feeding a time-aware S6 discretization (opens Phase 3)"
     ],
     "blocked": [
-      "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
-      "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
-      "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
+      "Phase 3: W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence + suppression",
+      "Phase 4: W15 streaming scorer, W16 campaign identity registry, W17 ONNX + Rust bridge"
     ]
   },
   "evidence": {
@@ -249,7 +254,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "60 passed"
+        "result": "63 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
@@ -257,18 +262,13 @@
         "result": "clean; 14 source files"
       },
       {
-        "cmd": "idr-intelligence demo --malicious-rate 0.25",
-        "when": "2026-07-23",
-        "result": "affine calibration now shifts raw 0.564 -> 0.092 tracking the 0.25 base rate (temperature-only could not); balanced 0.5 stays identity"
-      },
-      {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "suite v1 passed post-calibration-fix, 0 violations"
+        "result": "suite v1 passed incl. new lateral_movement floor, 0 violations"
       }
     ],
     "tests": [
-      "tests: 60 \u2014 calibration tests rewritten to target the pos_weight-shift bug directly (affine_calibration_params in isolation, bias absorbs log(w), strict NLL improvement on overconfident logits, finding==sigmoid(logit/T+bias)); degenerate recall@FPR; unmapped-kind + same-tactic ATT&CK coverage; true temperature-less legacy load"
+      "tests: 63 \u2014 adds identity entity/edge extraction, has_user/has_identity_pivot features, lateral_movement links-only-via-user (1 shared actor across 6 hosts; benign has a distinct user per stage)"
     ],
     "benchmarks": [
       {
@@ -370,11 +370,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:160a870-plus-verification-fixes",
+    "source_digest": "git:pending-w10",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W9 merged (PR #15, Phase 2 nearly done); W3-W5 verification found a real calibration bug \u2014 fixed with affine calibration + 11 other findings; W10 (identity entities) still pending to close Phase 2"
+      "summary": "Calibration fix in PR #16; W10 identity entities implemented \u2014 Phase 2 complete (10/14 workstreams); Phase 3 opens with W11 per-entity time"
     }
   }
 }

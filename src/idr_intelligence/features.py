@@ -31,6 +31,8 @@ FEATURE_NAMES = [
     "kind_hash_1",
     "kind_hash_2",
     "kind_hash_3",
+    "has_user",
+    "has_identity_pivot",
 ]
 FEATURE_DIM = len(FEATURE_NAMES)
 
@@ -67,6 +69,14 @@ def project_event(event: IdrEvent, delta_seconds: float = 0.0) -> EventProjectio
     features[12 + source_group] = 1.0
     digest = hashlib.blake2s(event.kind_type.encode(), digest_size=1).digest()[0]
     features[16 + digest % 4] = 1.0
+    features[20] = float(any(entity.startswith("user:") for entity in entities))
+    # Identity pivot: an authenticated actor reaching a remote host/resource —
+    # the per-event fingerprint of lateral movement. Cross-host linkage itself
+    # is carried structurally by the global user: node spanning events.
+    features[21] = float(
+        any(entity.startswith("user:") for entity in entities)
+        and any(key in kind for key in ("dst_ip", "dest_ips", "target_host", "cloud_resource", "arn"))
+    )
     return EventProjection(event=event, entities=entities, edges=edges, features=features)
 
 
@@ -96,6 +106,17 @@ def extract_entities(event: IdrEvent) -> tuple[str, ...]:
             entities.append(f"domain:{str(kind[key]).lower().rstrip('.')}")
     if kind.get("device"):
         entities.append(f"device:{host}:{kind['device']}")
+    # Identity entities. user: is global (no host prefix) so the same actor
+    # links events across hosts — the load-bearing pivot for lateral movement.
+    user = kind.get("user") or kind.get("username") or kind.get("account")
+    if user:
+        entities.append(f"user:{str(user).lower()}")
+    session = kind.get("session_id") or kind.get("sid")
+    if session is not None:
+        entities.append(f"session:{host}:{session}")
+    for key in ("cloud_resource", "arn"):
+        if kind.get(key):
+            entities.append(f"cloud:{str(kind[key]).lower()}")
     return tuple(dict.fromkeys(entities))
 
 
@@ -109,6 +130,9 @@ def _derive_edges(event: IdrEvent, entities: tuple[str, ...]) -> Iterator[tuple[
     asns = [x for x in entities if x.startswith("asn:")]
     domains = [x for x in entities if x.startswith("domain:")]
     devices = [x for x in entities if x.startswith("device:")]
+    users = [x for x in entities if x.startswith("user:")]
+    sessions = [x for x in entities if x.startswith("session:")]
+    clouds = [x for x in entities if x.startswith("cloud:")]
     if process:
         yield host, process, "executes"
     for digest in hashes:
@@ -126,6 +150,16 @@ def _derive_edges(event: IdrEvent, entities: tuple[str, ...]) -> Iterator[tuple[
         yield host, domain, "queries_or_visits"
     for device in devices:
         yield host, device, "contains"
+    for user in users:
+        yield user, host, "authenticates_to"
+        if process:
+            yield user, process, "owns"
+        for cloud in clouds:
+            yield user, cloud, "accesses"
+    for session in sessions:
+        yield host, session, "contains"
+        if process:
+            yield session, process, "spawns"
 
 
 def _is_production_bgp_anomaly(kind: dict) -> bool:
