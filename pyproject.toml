@@ -22,7 +22,6 @@ dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
 idr-intelligence = "idr_intelligence.cli:main"
 
 [tool.mypy]
-python_version = "3.11"
 mypy_path = "src"
 packages = ["idr_intelligence"]
 warn_unused_ignores = true
