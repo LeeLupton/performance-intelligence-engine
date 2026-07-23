@@ -31,6 +31,7 @@ class TemporalGraph:
     deltas: np.ndarray
     evidence_ids: tuple[tuple[str, ...], ...]
     relation_counts: dict[str, int]
+    typed_edges: tuple[tuple[str, str, str], ...] = ()
     evictions: tuple[EvictionRecord, ...] = ()
 
     @property
@@ -89,6 +90,7 @@ def build_temporal_graph(
     adjacency = np.eye(len(node_ids), dtype=np.float32)
     edge_last_seen: dict[tuple[int, int], datetime] = {}
     relation_counts: dict[str, int] = {}
+    typed_edges: dict[tuple[str, str, str], None] = {}
     last_seen: dict[str, datetime] = {}
 
     for projection in projections:
@@ -116,6 +118,7 @@ def build_temporal_graph(
             adjacency[i, j] = adjacency[j, i] = 1.0
             edge_last_seen[(min(i, j), max(i, j))] = timestamp
             relation_counts[relation] = relation_counts.get(relation, 0) + 1
+            typed_edges[(left, right, relation)] = None
 
     if decay_half_life is not None:
         for (i, j), seen in edge_last_seen.items():
@@ -146,5 +149,6 @@ def build_temporal_graph(
         deltas=deltas,
         evidence_ids=tuple(tuple(dict.fromkeys(ids)) for ids in evidence),
         relation_counts=relation_counts,
+        typed_edges=tuple(typed_edges),
         evictions=evictions,
     )

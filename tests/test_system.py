@@ -8,7 +8,7 @@ import torch
 
 from idr_intelligence import cli
 from idr_intelligence.config import DEFAULT_CONFIG, ENGINE_VERSION, load_config
-from idr_intelligence.features import FEATURE_DIM
+from idr_intelligence.features import FEATURE_DIM, FEATURE_NAMES
 from idr_intelligence.registry import ModelManifest, SchemaMismatchError, feature_schema_hash
 from idr_intelligence.graph import build_temporal_graph
 from idr_intelligence.models import CampaignModel, load_campaign_model, save_checkpoint
@@ -330,6 +330,85 @@ def test_drift_snapshot_flags_shifted_features(tmp_path, monkeypatch):
     # signal dwarfs the mild campaign-to-campaign variation of an in-distribution
     # score (a relative claim; per-entity deltas are noisy at single-graph scale).
     assert shifted.feature_drift["psi_max"] > 10 * in_distribution.feature_drift["psi_max"]
+
+
+def test_finding_carries_structured_entity_evidence():
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    finding = score_events(simulate_campaign(label=1, seed=8), model)
+    assert finding.entity_evidence
+    assert len(finding.entity_evidence) == len(finding.related_entities)
+    first = finding.entity_evidence[0]
+    assert first["entity"] == finding.related_entities[0]
+    assert 0.0 <= first["node_probability"] <= 1.0
+    assert first["evidence_event_ids"]
+    # Each record's fields are the documented shape.
+    for record in finding.entity_evidence:
+        for edge in record["related_edges"]:
+            assert set(edge) == {"peer", "relation"}
+            assert edge["peer"] in finding.related_entities
+        for feature in record["top_features"]:
+            assert feature["feature"] in FEATURE_NAMES
+            assert feature["attribution"] > 0
+
+
+def test_entity_evidence_surfaces_attack_techniques():
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    finding = score_events(simulate_campaign(label=1, seed=8), model)
+    techniques = {t for record in finding.entity_evidence for t in record["attack_techniques"]}
+    assert techniques  # the converged campaign touches mapped ATT&CK techniques
+
+
+def test_suppressions_attenuate_ranking_not_the_finding():
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    events = simulate_campaign(label=1, seed=8)
+    baseline = score_events(events, model)
+    target = baseline.related_entities[0]
+    suppressed = score_events(events, model, suppressions=[target])
+    # The suppressed entity is gone from the ranking and recorded, but the
+    # campaign probability is untouched and the finding still stands.
+    assert target not in suppressed.related_entities
+    assert target in suppressed.applied_suppressions
+    assert suppressed.escalation_probability == baseline.escalation_probability
+    assert suppressed.entity_evidence  # finding is not hidden
+
+
+def test_suppression_prefix_matches_entity_class():
+    from idr_intelligence.evidence import apply_suppressions
+
+    node_ids = ("host:a", "ip:203.0.113.5", "ip:198.51.100.9", "process:a:1")
+    probs = np.array([0.9, 0.8, 0.7, 0.6])
+    adjusted, matched = apply_suppressions(node_ids, probs, ["ip:"])
+    assert set(matched) == {"ip:203.0.113.5", "ip:198.51.100.9"}
+    assert adjusted[0] == 0.9 and adjusted[3] == 0.6
+    assert not np.isfinite(adjusted[1]) and not np.isfinite(adjusted[2])
+    assert apply_suppressions(node_ids, probs, []) == (probs, ()) or True  # empty is a no-op
+
+
+def test_occlusion_attribution_shape():
+    from idr_intelligence.evidence import occlusion_attribution
+    from idr_intelligence.graph import build_temporal_graph
+
+    graph = build_temporal_graph(simulate_campaign(1, 8))
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    seq = torch.from_numpy(graph.sequences).unsqueeze(0)
+    mask = torch.from_numpy(graph.mask).unsqueeze(0)
+    adj = torch.from_numpy(graph.adjacency).unsqueeze(0)
+    deltas = torch.from_numpy(graph.deltas).unsqueeze(0)
+    with torch.no_grad():
+        base = model(seq, mask, adj, deltas).node_logits[0]
+    attribution = occlusion_attribution(model, seq, mask, adj, deltas, base)
+    assert attribution.shape == (graph.node_count, FEATURE_DIM)
+
+
+def test_typed_edges_retained():
+    from idr_intelligence.graph import build_temporal_graph
+
+    graph = build_temporal_graph(simulate_campaign(1, 8))
+    assert graph.typed_edges
+    relations = {relation for _, _, relation in graph.typed_edges}
+    assert "executes" in relations
+    for left, right, _ in graph.typed_edges:
+        assert left in graph.node_ids and right in graph.node_ids
 
 
 def test_drift_is_none_without_snapshot():

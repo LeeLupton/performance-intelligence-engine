@@ -28,7 +28,7 @@
     ]
   },
   "outputs": [
-    "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability (affine-calibrated), raw_escalation_probability, calibration, predicted_next_stage (ATT&CK), observed_attack_stages, related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations, engine_version, feature_schema_hash, scored_at, feature_drift",
+    "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability (affine-calibrated), raw_escalation_probability, calibration, predicted_next_stage (ATT&CK), observed_attack_stages, related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations, engine_version, feature_schema_hash, scored_at, feature_drift; entity_evidence (per-entity why: occlusion features, typed edges, ATT&CK); applied_suppressions",
     "Ablation benchmark report (training.py, reports/demo.json) with per-scenario generalization and rolling-origin CV verdict",
     "Checkpoint artifacts/hybrid_model.pt (dict: state_dict incl. temperature+cal_bias buffers, dims, use_s6/use_gnn/pooling, manifest, feature_stats)"
   ],
@@ -44,7 +44,7 @@
       },
       {
         "module": "src/idr_intelligence/graph.py",
-        "role": "temporal graph: per-entity histories, per-entity deltas, time-decayed edges, node budget, evidence provenance"
+        "role": "temporal graph: per-entity histories, per-entity deltas, time-decayed edges, node budget, typed edges, evidence provenance"
       },
       {
         "module": "src/idr_intelligence/models.py",
@@ -89,6 +89,10 @@
       {
         "module": "src/idr_intelligence/bounded_graph.py",
         "role": "GraphBudget + audited LRU EvictionRecord for bounded node memory (W15 streaming infra)"
+      },
+      {
+        "module": "src/idr_intelligence/evidence.py",
+        "role": "structured per-entity evidence (occlusion attribution, typed edges, ATT&CK) + suppression allowlist"
       }
     ],
     "interfaces": [
@@ -105,12 +109,12 @@
       {
         "name": "TemporalGraph",
         "version": "v1",
-        "contract": "node_ids, sequences [N,steps,22], mask, deltas [N,steps] (per-entity log1p gaps), symmetric degree-normalized adjacency, evidence_ids per node, relation_counts, evictions (audited node-budget drops)"
+        "contract": "node_ids, sequences [N,steps,22], mask, deltas [N,steps] (per-entity log1p gaps), symmetric degree-normalized adjacency, evidence_ids per node, relation_counts, typed_edges (node,node,relation), evictions (audited node-budget drops)"
       },
       {
         "name": "IntelligenceFinding",
-        "version": "v5",
-        "contract": "affine-calibrated escalation_probability + raw_escalation_probability + calibration string ('none' or 'affine:scale=..,bias=..'); observed_attack_stages; engine_version/feature_schema_hash/scored_at; feature_drift {psi_max,psi_mean,flagged_features}|null"
+        "version": "v6",
+        "contract": "v5 fields + entity_evidence [{entity, node_probability, evidence_event_ids, related_edges [{peer,relation}], top_features [{feature,attribution}], attack_techniques}] and applied_suppressions; flat related_entities/evidence_event_ids kept for back-compat"
       },
       {
         "name": "LabeledWindow",
@@ -233,6 +237,11 @@
         "id": "ADR-23",
         "decision": "W12 delivers the two FALSIFIABLE parts of the roadmap's bounded-decayed-sparse graph: time-decayed edge weights (0.5**(age/half_life), off by default) with a distractor ablation, and GraphBudget+EvictionRecord audited node eviction (unit-tested, never triggers at demo scale). DEFERRED to W15 (streaming): torch.sparse.mm (pure overhead at <=24 nodes) and the build_temporal_graph->replay-wrapper refactor (needs streaming as a second consumer) \u2014 shipping either now would be unfalsified complexity, per the roadmap's own R-GCN rejection logic. HONEST RESULT: decay_ablation on distractor gives none/1h/15m Brier 0.2366/0.2366/0.2364 \u2014 decay barely moves because distractor plants benign edges contemporaneously, not as a stale preamble; the mechanism is correct but this scenario does not stress it. decay_half_life defaults None (shipped hybrid unchanged; floors stable)",
         "where": "docs/ROADMAP.md W12"
+      },
+      {
+        "id": "ADR-24",
+        "decision": "W14 structured evidence: the finding keeps its flat top-k for Rust back-compat but adds entity_evidence \u2014 per ranked entity, the events implicating it, typed edges to other ranked entities (graph.py now retains per-pair typed_edges, previously only counted), top-3 features by occlusion attribution (zero each of 22 channels, measure node-logit drop), and ATT&CK techniques from its events. All derived from the existing graph/model, so nothing bypasses the evidence boundary. apply_suppressions attenuates allowlisted entities (exact id or 'prefix:') out of the RANKING only \u2014 campaign probability untouched, finding never hidden from idr-sentinel, applied_suppressions audited",
+        "where": "docs/ROADMAP.md W14 \u2014 chosen as best-ROI: completes the actionable-evidence product, dodges the synthetic-benchmark wall that stalled W11/W12"
       }
     ]
   },
@@ -255,14 +264,14 @@
       "Verification fixes (wk3kr3oza, 12 upheld): affine calibration replacing broken temperature-only [BLOCKING], degenerate recall@FPR handling, Rust sketch + state.json contract sync [BLOCKING], attack docstring, and 5 vacuous/tautological tests rewritten to fail on real regressions [2 BLOCKING]",
       "W10: identity entities (user/session/cloud) + edges + features + lateral_movement scenario \u2014 Phase 2 complete",
       "W11: per-entity time deltas + time-aware S6 discretization + time_ablation (honest verdict: global wins on low_and_slow at demo budget)",
-      "W12: time-decayed edges + GraphBudget audited eviction + decay_ablation (honest near-tie on distractor); sparse-mm and replay-wrapper deferred to W15"
+      "W12: time-decayed edges + GraphBudget audited eviction + decay_ablation (honest near-tie on distractor); sparse-mm and replay-wrapper deferred to W15",
+      "W14: structured per-entity evidence (occlusion attribution, typed edges, ATT&CK per entity) + analyst suppression allowlist"
     ],
     "active": [
-      "W13: S6 step() cell \u2014 refactor SelectiveSSM to expose step(u_t, state) with forward as a loop over it (one code path for training/streaming/export), hoist per-step projections out of the loop"
+      "W13: S6 step() cell refactor (one code path for train/stream/export; prerequisite for W15 streaming + W17 ONNX/Rust)"
     ],
     "blocked": [
-      "Phase 3 remainder: W14 structured evidence + suppression",
-      "Phase 4: W15 streaming scorer (+ sparse adjacency, replay-wrapper from W12 deferral), W16 campaign identity registry, W17 ONNX + Rust bridge"
+      "Phase 4: W15 streaming scorer (+ sparse adjacency & replay-wrapper from W12 deferral), W16 campaign identity registry, W17 ONNX + Rust bridge"
     ]
   },
   "evidence": {
@@ -270,26 +279,26 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "73 passed"
+        "result": "79 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
         "when": "2026-07-23",
-        "result": "clean; 15 source files"
+        "result": "clean; 16 source files"
       },
       {
-        "cmd": "idr-intelligence decay-ablation --scenario distractor --samples 80 --epochs 3",
+        "cmd": "idr-intelligence demo + suppression demo",
         "when": "2026-07-23",
-        "result": "none 0.2366 / 1h 0.2366 / 15m 0.2364 \u2014 near-tie; decay mechanism correct but distractor edges are contemporaneous not stale"
+        "result": "entity_evidence carries node prob + typed edges + occlusion top-3 features + ATT&CK; host: suppression removes host from ranking, records it, leaves probability unchanged"
       },
       {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "passed unchanged (decay default off), 0 violations"
+        "result": "passed, 0 violations (finding-shape change does not affect training/eval)"
       }
     ],
     "tests": [
-      "tests: 73 \u2014 adds edge-decay weight math (stale off-diagonal shrinks), GraphBudget eviction + determinism + audit trail, decay_half_life checkpoint round-trip, 3-setting decay-ablation"
+      "tests: 79 \u2014 adds structured entity-evidence shape + ATT&CK surfacing, suppression attenuates-ranking-not-finding + prefix matching, occlusion attribution shape, typed-edge retention"
     ],
     "benchmarks": [
       {
@@ -391,11 +400,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:9136048-plus-w12",
+    "source_digest": "git:c86db77-plus-w14",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W12 time-decayed edges + bounded graph shipped (honest near-tie ablation; sparse/replay deferred to W15); W13 S6 step() cell next"
+      "summary": "W14 structured evidence + suppression shipped (best-ROI pick: actionable analyst output, immune to the synthetic wall); 13/14 workstreams; W13 S6 step() cell next toward the production path"
     }
   }
 }

@@ -30,6 +30,7 @@ def main() -> None:
     score = subparsers.add_parser("score", help="score newline-delimited IdrEvent JSON")
     score.add_argument("events")
     score.add_argument("--weights", default="artifacts/hybrid_model.pt")
+    score.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
 
     bench = subparsers.add_parser("benchmark", help="run a frozen benchmark manifest; exit 1 on floor violations")
     bench.add_argument("--manifest", default="benchmarks/v1.json")
@@ -83,7 +84,8 @@ def main() -> None:
             except Exception as exc:
                 raise SystemExit(f"invalid event at line {line_number}: {exc}") from exc
         model = load_campaign_model(args.weights)
-        print(json.dumps(score_events(events, model, model_version=Path(args.weights).name).to_dict(), indent=2))
+        finding = score_events(events, model, model_version=Path(args.weights).name, suppressions=args.suppress)
+        print(json.dumps(finding.to_dict(), indent=2))
 
 
 if __name__ == "__main__":
