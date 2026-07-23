@@ -578,6 +578,14 @@ def test_time_weight_zero_is_identity():
     torch.testing.assert_close(out_base, out_aware)
 
 
+def test_default_time_mode_is_global():
+    # Evidence (reports/AUDIT.md) shows global >= time_aware on every synthetic
+    # scenario, so the shipped default is the simpler, better mode.
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    assert model.time_mode == "global"
+    assert model.temporal is not None and model.temporal.time_weight is None
+
+
 def test_time_mode_roundtrips_in_checkpoint(tmp_path):
     for mode in ("global", "per_entity", "time_aware"):
         model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode=mode)
