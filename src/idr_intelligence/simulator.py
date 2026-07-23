@@ -1,4 +1,20 @@
-"""Matched benign/malicious campaign generator for the synthetic benchmark."""
+"""Matched benign/malicious campaign generator with graded and adversarial scenarios.
+
+Every scenario emits the same six kill-chain kinds (plus interleaved noise for
+`distractor`), so nothing separates the classes except convergence, order, and
+attribute semantics — the exact signals the engine claims to use. All
+construction is deterministic in (label, seed, scenario).
+
+Scenario families:
+- v0_easy:       the original all-or-nothing contrast (default; back-compatible)
+- graded:        per-slot convergence with probability `difficulty`
+- distractor:    converged campaign interleaved with benign noise on the same host
+- legit_update:  hard negative — campaign-shaped topology with benign semantics
+- truncated:     chronological prefix of the campaign; metadata carries stage_reached
+- low_and_slow:  evasion — kill chain stretched from minutes to days
+- split_host:    evasion — every stage on a different host, linked only via infrastructure
+- hash_rotation: evasion — per-stage executable hashes on a converged host
+"""
 
 from __future__ import annotations
 
@@ -7,27 +23,51 @@ from datetime import datetime, timedelta, timezone
 
 from .schema import IdrEvent
 
+SCENARIOS = (
+    "v0_easy",
+    "graded",
+    "distractor",
+    "legit_update",
+    "truncated",
+    "low_and_slow",
+    "split_host",
+    "hash_rotation",
+)
 
-def simulate_campaign(label: int, seed: int, host: str | None = None) -> list[IdrEvent]:
-    """Emit six events; label=1 converges host/hash/IP in kill-chain order, label=0 scatters them."""
+
+def simulate_campaign(
+    label: int,
+    seed: int,
+    host: str | None = None,
+    scenario: str = "v0_easy",
+    difficulty: float = 0.7,
+) -> list[IdrEvent]:
+    """Emit one campaign's events for the given scenario, deterministically."""
+    if scenario not in SCENARIOS:
+        raise ValueError(f"unknown scenario: {scenario}")
     primary_host = host or f"workstation-{seed % 19:02d}"
     start = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=seed * 3)
     events: list[IdrEvent] = []
 
-    def add(minutes: int, source: str, severity: str, kind: dict, event_host: str | None = None) -> None:
+    def add(minutes: float, source: str, severity: str, kind: dict, event_host: str, stage_index: int) -> None:
         events.append(IdrEvent(
             id=str(uuid.UUID(int=(seed * 100 + len(events) + 1) % (1 << 128))),
             timestamp=start + timedelta(minutes=minutes),
             source=source,
             severity=severity,
             kind=kind,
-            metadata={"host": event_host or primary_host, "simulation_seed": seed},
+            metadata={
+                "host": event_host,
+                "simulation_seed": seed,
+                "scenario": scenario,
+                "stage_index": stage_index,
+            },
         ))
 
     suspicious_ip = f"203.0.113.{20 + seed % 70}"
     process_id = 7000 + seed
-    executable_hash = f"deadbeef{seed:056x}"[-64:]
-    host_map = [primary_host] * 6 if label else [
+    campaign_hash = f"deadbeef{seed:056x}"[-64:]
+    scatter_hosts = [
         primary_host,
         f"sensor-{seed % 7}",
         f"workstation-{(seed + 5) % 19:02d}",
@@ -35,41 +75,98 @@ def simulate_campaign(label: int, seed: int, host: str | None = None) -> list[Id
         f"laptop-{seed % 13:02d}",
         f"storage-{seed % 5:02d}",
     ]
-    ip_map = [suspicious_ip] * 5 if label else [
+    scatter_ips = [
         suspicious_ip,
         f"203.0.113.{(seed + 31) % 90 + 1}",
         f"203.0.113.{(seed + 47) % 90 + 1}",
         f"192.0.2.{(seed + 9) % 90 + 1}",
         f"198.51.100.{(seed + 55) % 90 + 1}",
     ]
-    time_map = [8, 10, 12, 17, 19, 23] if label else [19, 8, 23, 10, 17, 12]
+    ordered_times: list[float] = [8, 10, 12, 17, 19, 23]
+    shuffled_times: list[float] = [19, 8, 23, 10, 17, 12]
 
-    add(time_map[0], "kernel_ebpf", "HIGH", {
-        "type": "socket_lineage", "pid": process_id, "tgid": process_id,
-        "exe_path": "/tmp/.cache/update", "exe_sha256": executable_hash,
-        "dst_ip": ip_map[0], "dst_port": 443, "is_signed": False,
-    }, host_map[0])
-    add(time_map[1], "sentinel_correlation", "HIGH", {
+    converged = bool(label)
+    hosts = [primary_host] * 6 if converged else list(scatter_hosts)
+    ips = [suspicious_ip] * 5 if converged else list(scatter_ips)
+    hashes = [campaign_hash] * 2 if converged else [campaign_hash, f"cafebabe{seed:056x}"[-64:]]
+    pids = [process_id] * 2 if converged else [process_id, process_id + 900]
+    times = list(ordered_times) if converged else list(shuffled_times)
+    signed = False
+    exfil = True
+    hijack = True
+    time_offset_seconds = 90.0
+
+    if scenario == "graded" and label:
+        threshold = int(difficulty * 100)
+        hosts = [primary_host if (seed * 31 + slot) % 100 < threshold else scatter_hosts[slot] for slot in range(6)]
+        ips = [suspicious_ip if (seed * 53 + slot) % 100 < threshold else scatter_ips[slot] for slot in range(5)]
+        times = list(ordered_times) if (seed * 97) % 100 < threshold else list(shuffled_times)
+    elif scenario == "legit_update" and not label:
+        hosts = [primary_host] * 6
+        ips = [suspicious_ip] * 5
+        times = list(ordered_times)
+        signed = True
+        exfil = False
+        hijack = False
+        time_offset_seconds = 0.4
+    elif scenario == "low_and_slow":
+        times = [minute * 480 for minute in times]
+    elif scenario == "split_host" and label:
+        hosts = list(scatter_hosts)
+    elif scenario == "hash_rotation" and label:
+        hashes = [f"{stage:08x}{seed:056x}"[-64:] for stage in (0xA1, 0xA3)]
+        pids = [process_id, process_id + 17]
+
+    add(times[0], "kernel_ebpf", "HIGH", {
+        "type": "socket_lineage", "pid": pids[0], "tgid": pids[0],
+        "exe_path": "/usr/bin/updater" if signed else "/tmp/.cache/update",
+        "exe_sha256": hashes[0],
+        "dst_ip": ips[0], "dst_port": 443, "is_signed": signed,
+    }, hosts[0], 0)
+    add(times[1], "sentinel_correlation", "HIGH", {
         "type": "bgp_anomaly",
-        "kind": {"kind": "subprefix_hijack_local_infra", "covered_local_prefix": "203.0.113.0/24", "hijacker_asn": 64580},
-        "prefix": "203.0.113.0/25", "observed_origin_asn": 64580,
-        "legitimate_origin_asn": 64500, "confidence": "high", "dst_ip": ip_map[1],
-    }, host_map[1])
-    add(time_map[2], "kernel_ebpf", "CRITICAL", {
-        "type": "suspicious_beacon", "pid": process_id if label else process_id + 900,
-        "exe_path": "/tmp/.cache/update",
-        "exe_sha256": executable_hash if label else f"cafebabe{seed:056x}"[-64:],
-        "dst_ip": ip_map[2], "asn_owner": "Example Transit",
-    }, host_map[2])
-    add(time_map[3], "network_zeek", "HIGH", {
-        "type": "ntp_time_shift", "offset_seconds": 90.0, "ntp_server": ip_map[3],
-    }, host_map[3])
-    add(time_map[4], "network_zeek", "CRITICAL", {
+        "kind": {
+            "kind": "subprefix_hijack_local_infra" if hijack else "route_leak_benign",
+            "covered_local_prefix": "203.0.113.0/24",
+            "hijacker_asn": 64580 if hijack else 64500,
+        },
+        "prefix": "203.0.113.0/25", "observed_origin_asn": 64580 if hijack else 64500,
+        "legitimate_origin_asn": 64500, "confidence": "high" if hijack else "low", "dst_ip": ips[1],
+    }, hosts[1], 1)
+    add(times[2], "kernel_ebpf", "CRITICAL", {
+        "type": "suspicious_beacon", "pid": pids[1],
+        "exe_path": "/usr/bin/updater" if signed else "/tmp/.cache/update",
+        "exe_sha256": hashes[1],
+        "dst_ip": ips[2], "asn_owner": "Example Transit",
+    }, hosts[2], 2)
+    add(times[3], "network_zeek", "HIGH", {
+        "type": "ntp_time_shift", "offset_seconds": time_offset_seconds, "ntp_server": ips[3],
+    }, hosts[3], 3)
+    add(times[4], "network_zeek", "CRITICAL", {
         "type": "hsts_time_manipulation", "domain": "update-cdn.example",
-        "cert_expiry": "2025-12-01T00:00:00Z", "ntp_shift_seconds": 90.0, "dst_ip": ip_map[4],
-    }, host_map[4])
-    add(time_map[5], "hardware_nvme", "HIGH", {
+        "cert_expiry": "2025-12-01T00:00:00Z", "ntp_shift_seconds": time_offset_seconds, "dst_ip": ips[4],
+    }, hosts[4], 4)
+    add(times[5], "hardware_nvme", "HIGH", {
         "type": "nvme_latency_anomaly", "device": "nvme0n1", "baseline_us": 120,
-        "observed_us": 1900 + seed, "deviation_pct": 1483.0, "concurrent_exfil": True,
-    }, host_map[5])
+        "observed_us": 1900 + seed, "deviation_pct": 1483.0 if exfil else 40.0, "concurrent_exfil": exfil,
+    }, hosts[5], 5)
+
+    if scenario == "distractor":
+        noise_times = [9, 14, 20] if label else [11, 16, 21]
+        benign_hash = f"0badf00d{seed:056x}"[-64:]
+        for noise_index, minute in enumerate(noise_times):
+            add(minute, "kernel_ebpf", "INFO", {
+                "type": "socket_lineage", "pid": process_id + 300 + noise_index,
+                "tgid": process_id + 300 + noise_index,
+                "exe_path": "/usr/bin/browser", "exe_sha256": benign_hash,
+                "dst_ip": f"198.51.100.{(seed + noise_index * 13) % 90 + 1}", "dst_port": 443,
+                "is_signed": True,
+            }, primary_host, 6 + noise_index)
+
+    if scenario == "truncated":
+        stage_reached = 2 + seed % 5
+        events[:] = [event for event in events if event.metadata["stage_index"] < stage_reached]
+        for event in events:
+            event.metadata["stage_reached"] = stage_reached
+
     return sorted(events, key=lambda event: (event.timestamp, event.id))

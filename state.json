@@ -52,7 +52,7 @@
       },
       {
         "module": "src/idr_intelligence/simulator.py",
-        "role": "matched benign/malicious campaign generator"
+        "role": "8 scenario families: v0_easy, graded, distractor, legit_update, truncated, low_and_slow, split_host, hash_rotation; per-event scenario + stage_index ground truth"
       },
       {
         "module": "src/idr_intelligence/training.py",
@@ -176,6 +176,11 @@
         "id": "ADR-15",
         "decision": "Next-stage stays deterministic per the roadmap's rejection of the learned head: attack.py maps 11 of 12 kinds to ATT&CK tactic/technique (triage_classification is a correlator meta-event, deliberately unmapped); prediction advances past the furthest observed tactic, fixing the old presence-lookup's order blindness",
         "where": "docs/ROADMAP.md W5"
+      },
+      {
+        "id": "ADR-16",
+        "decision": "Simulator scenarios are deterministic in (label, seed, scenario) with no RNG object; every scenario keeps the same six kill-chain kinds so nothing separates classes except convergence/order/semantics; train_ablation reports scenario_generalization for the trained hybrid across all families",
+        "where": "docs/ROADMAP.md W6"
       }
     ]
   },
@@ -190,13 +195,14 @@
       "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml, provenance fields on findings, schema-hash rejection on load)",
       "W3: temperature calibration (validation-NLL grid, T buffer in state_dict, manifest calibration string) + ECE/log-loss/MCE metrics + raw/calibrated finding fields",
       "W4: seeded random labels + pos_weight + recall@FPR and precision@k operating-point metrics; CLI --malicious-rate",
-      "W5: ATT&CK mapping (attack.py) \u2014 Phase 1 complete"
+      "W5: ATT&CK mapping (attack.py) \u2014 Phase 1 complete",
+      "W6: graded + adversarial simulator scenarios with per-scenario generalization table"
     ],
     "active": [
-      "W6: graded + adversarial simulator scenarios (convergence knob, distractors, hard negatives, variable length, low-and-slow / split-host / hash-rotation evasion families) \u2014 opens Phase 2"
+      "W7: versioned benchmark suite with CI metric floors + training-time feature snapshot for drift monitoring"
     ],
     "blocked": [
-      "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
+      "Phase 2 remainder: W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
@@ -207,7 +213,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "36 passed"
+        "result": "45 passed"
       },
       {
         "cmd": "ruff check src tests",
@@ -220,13 +226,13 @@
         "result": "no issues in 12 source files"
       },
       {
-        "cmd": "idr-intelligence demo --samples 20 --epochs 1",
+        "cmd": "idr-intelligence demo --samples 80 --epochs 3",
         "when": "2026-07-23",
-        "result": "finding narrates 6 ATT&CK stages in timestamp order; predicted_next_stage=impact"
+        "result": "scenario_generalization: v0-trained hybrid Brier degrades 0.128->0.335 on distractor, 0.202 split_host, 0.195 hash_rotation; ROC still saturated at n=20/scenario"
       }
     ],
     "tests": [
-      "tests: 36 \u2014 adds ATT&CK table coverage (11/12 kinds, meta-kind exemption), time-ordered stages with evidence anchors, progression-not-presence next-stage semantics incl. kill-chain-complete"
+      "tests: 45 \u2014 adds v0_easy semantic back-compat, per-scenario invariants (split-host infra linking, low-and-slow 480x stretch, hash rotation, legit_update hard-negative semantics, truncation prefixes, distractor noise), scenario determinism, generalization table shape"
     ],
     "benchmarks": [
       {
@@ -262,6 +268,20 @@
           "s6_gnn_uniform_pool": 0.2843
         },
         "note": "all arms select T=0.1995 (grid edge) \u2014 demo models are systematically underconfident at 3 epochs; interior T expected on real training budgets"
+      },
+      {
+        "run": "demo 80/3 seed 7, 2026-07-23, W6 scenario generalization (hybrid, v0_easy-trained)",
+        "brier_by_scenario": {
+          "v0_easy": 0.1279,
+          "graded": 0.1665,
+          "distractor": 0.3348,
+          "legit_update": 0.1288,
+          "truncated": 0.1314,
+          "low_and_slow": 0.1374,
+          "split_host": 0.2018,
+          "hash_rotation": 0.1948
+        },
+        "note": "first measurable cross-scenario differentiation; ranking metrics still saturate \u2014 W9 replicates and larger eval sets sharpen this"
       }
     ]
   },
@@ -306,7 +326,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W4 merged (PR #11); W5 ATT&CK mapping implemented \u2014 Phase 1 complete; Phase 2 opens with W6 simulator hardening"
+      "summary": "Phase 1 merged through PR #12; W6 scenario families implemented \u2014 Phase 2 open; W7 benchmark suite next"
     }
   }
 }
