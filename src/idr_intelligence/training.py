@@ -70,6 +70,38 @@ def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONF
     return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
 
 
+def windows_to_batch(windows: list, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps) -> Batch:
+    """Pad chronologically-sorted labeled windows into one Batch, zero model changes."""
+    samples = len(windows)
+    sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
+    mask = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
+    adjacency = np.zeros((samples, max_nodes, max_nodes), dtype=np.float32)
+    labels = []
+    for index, window in enumerate(windows):
+        graph = build_temporal_graph(list(window.events), max_steps=max_steps)
+        count = min(graph.node_count, max_nodes)
+        sequences[index, :count] = graph.sequences[:count]
+        mask[index, :count] = graph.mask[:count]
+        adjacency[index, :count, :count] = graph.adjacency[:count, :count]
+        if count < max_nodes:
+            adjacency[index, count:, count:] = np.eye(max_nodes - count, dtype=np.float32)
+        labels.append(float(window.label))
+    return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
+
+
+def _require_two_class_segments(labels: torch.Tensor) -> None:
+    """Real data cannot be redrawn: fail loudly when a split segment is single-class."""
+    size = len(labels)
+    train_end, validation_end = int(size * 0.60), int(size * 0.80)
+    for name, start, end in (("train", 0, train_end), ("validation", train_end, validation_end), ("test", validation_end, size)):
+        segment = labels[start:end]
+        if segment.sum() == 0 or segment.sum() == len(segment):
+            raise ValueError(
+                f"chronological {name} segment is single-class ({int(segment.sum())}/{len(segment)} malicious); "
+                "supply more windows or a wider time range"
+            )
+
+
 def _draw_labels(samples: int, seed: int, malicious_rate: float) -> np.ndarray:
     """Seeded label draw, deterministically retried until every split segment has both classes."""
     train_end, validation_end = int(samples * 0.60), int(samples * 0.80)
@@ -89,10 +121,26 @@ def chronological_split(batch: Batch) -> tuple[Batch, Batch, Batch]:
     return _slice(batch, 0, train_end), _slice(batch, train_end, validation_end), _slice(batch, validation_end, size)
 
 
-def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None, malicious_rate: float = 0.5, scenario: str = "v0_easy") -> dict:
-    """Train every ablation variant under one split, save the hybrid, return the report."""
+def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None, malicious_rate: float = 0.5, scenario: str = "v0_easy", data: str | None = None) -> dict:
+    """Train every ablation variant under one split, save the hybrid, return the report.
+
+    With `data`, labeled real windows (*.labeled.ndjson) replace the simulator;
+    windows are ordered by start time so the chronological split stays honest.
+    """
     set_seed(seed)
-    train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed, malicious_rate=malicious_rate, scenario=scenario))
+    if data is not None:
+        from .dataio import load_labeled_windows
+
+        windows = load_labeled_windows(data)
+        batch = windows_to_batch(windows)
+        _require_two_class_segments(batch.labels)
+        source = str(data)
+        observed_rate = float(batch.labels.mean().item())
+    else:
+        batch = make_dataset(samples=samples, seed=seed, malicious_rate=malicious_rate, scenario=scenario)
+        source = "simulator"
+        observed_rate = malicious_rate
+    train, validation, test = chronological_split(batch)
     variants: dict[str, dict[str, Any]] = {
         "static_baseline": {"use_s6": False, "use_gnn": False},
         "s6_only": {"use_s6": True, "use_gnn": False},
@@ -110,8 +158,9 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
         evidence_precision[name] = evidence_precision_at_5(model, evidence_seeds)
     report = {
         "problem": "predict campaign escalation from ordered IdrEvent histories and entity relationships",
-        "malicious_rate": malicious_rate,
-        "scenario": scenario,
+        "data_source": source,
+        "malicious_rate": observed_rate,
+        "scenario": scenario if data is None else "real_data",
         "split": {"train": len(train.labels), "validation": len(validation.labels), "test": len(test.labels)},
         "metrics": results,
         "evidence_precision_at_5": evidence_precision,

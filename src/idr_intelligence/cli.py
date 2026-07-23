@@ -24,6 +24,7 @@ def main() -> None:
     demo.add_argument("--epochs", type=int, default=3)
     demo.add_argument("--malicious-rate", type=float, default=0.5)
     demo.add_argument("--scenario", default="v0_easy", choices=SCENARIOS)
+    demo.add_argument("--data", default=None, help="directory or file of *.labeled.ndjson windows; replaces the simulator")
     demo.add_argument("--output", default="reports/demo.json")
 
     score = subparsers.add_parser("score", help="score newline-delimited IdrEvent JSON")
@@ -35,7 +36,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "demo":
-        report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate, scenario=args.scenario)
+        report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate, scenario=args.scenario, data=args.data)
         model = load_campaign_model("artifacts/hybrid_model.pt")
         finding = score_events(simulate_campaign(1, 999), model, model_version="synthetic-demo-v0.1")
         print(json.dumps({"benchmark": report, "finding": finding.to_dict()}, indent=2))

@@ -81,6 +81,10 @@
       {
         "module": "src/idr_intelligence/benchmark.py",
         "role": "frozen-manifest benchmark runner with regression floors (benchmarks/v1.json)"
+      },
+      {
+        "module": "src/idr_intelligence/dataio.py",
+        "role": "*.labeled.ndjson loader for LabeledWindow real-campaign ingestion"
       }
     ],
     "interfaces": [
@@ -103,6 +107,11 @@
         "name": "IntelligenceFinding",
         "version": "v5",
         "contract": "v4 fields + feature_drift {psi_max, psi_mean, flagged_features} | null \u2014 advisory PSI of scored features vs the checkpoint's training snapshot"
+      },
+      {
+        "name": "LabeledWindow",
+        "version": "v1",
+        "contract": "{window_id, label 0|1, events [IdrEvent,...]} one-per-line in *.labeled.ndjson; loader sorts by window start so the chronological split stays honest; single-class split segments fail loudly"
       }
     ],
     "decisions": [
@@ -190,6 +199,11 @@
         "id": "ADR-17",
         "decision": "benchmarks/v1.json freezes generator config + floors; scenario floors are Brier-only because ranking metrics observably flip (distractor ROC 0.0<->1.0) at CI budgets and would flake. CI runs the manifest every build. Checkpoints embed per-feature training histograms; scoring attaches advisory PSI drift (0.2 flag line) to findings",
         "where": "docs/ROADMAP.md W7"
+      },
+      {
+        "id": "ADR-18",
+        "decision": "Real labeled windows enter via --data with zero model changes (windows_to_batch reuses build_temporal_graph); the report records data_source and the observed malicious rate; simulator diagnostics (evidence precision, scenario generalization) still run as synthetic sidecars",
+        "where": "docs/ROADMAP.md W8"
       }
     ]
   },
@@ -206,13 +220,14 @@
       "W4: seeded random labels + pos_weight + recall@FPR and precision@k operating-point metrics; CLI --malicious-rate",
       "W5: ATT&CK mapping (attack.py) \u2014 Phase 1 complete",
       "W6: graded + adversarial simulator scenarios with per-scenario generalization table",
-      "W7: versioned benchmark suite (benchmarks/v1.json, runner, CI gate) + feature-snapshot drift on findings"
+      "W7: versioned benchmark suite (benchmarks/v1.json, runner, CI gate) + feature-snapshot drift on findings",
+      "W8: LabeledWindow schema + dataio loader + --data training path"
     ],
     "active": [
-      "W8: LabeledWindow real-campaign ingestion \u2014 schema, *.labeled.ndjson loader, --data flag on train_ablation"
+      "W9: rolling-origin temporal CV with seed replicates; best_model only declared beyond paired per-fold std"
     ],
     "blocked": [
-      "Phase 2 remainder: W9 rolling-origin CV, W10 identity entities",
+      "Phase 2 remainder: W10 identity entities",
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
@@ -223,21 +238,16 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "49 passed"
+        "result": "53 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
         "when": "2026-07-23",
-        "result": "clean; 13 source files"
-      },
-      {
-        "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
-        "when": "2026-07-23",
-        "result": "suite v1 passed, 0 violations (~4s runtime)"
+        "result": "clean; 14 source files"
       }
     ],
     "tests": [
-      "tests: 49 \u2014 adds benchmark pass + doctored-floor violation detection, drift snapshot flags delta_seconds_log on low_and_slow while staying quiet in-distribution, drift None without snapshot"
+      "tests: 53 \u2014 adds LabeledWindow validation, loader ordering + file:line errors + empty/missing dirs, full --data training roundtrip (24 windows, split 14/5/5), loud single-class failure"
     ],
     "benchmarks": [
       {
@@ -331,7 +341,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W6 merged (PR #13); W7 benchmark suite + drift implemented; W8 LabeledWindow ingestion next"
+      "summary": "W7 merged (PR #14); W8 LabeledWindow ingestion implemented; W9 rolling-origin CV next"
     }
   }
 }

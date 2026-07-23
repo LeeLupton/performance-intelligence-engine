@@ -55,6 +55,35 @@ def parse_events(rows: Iterable[dict[str, Any]]) -> list[IdrEvent]:
     return sorted((IdrEvent.from_dict(row) for row in rows), key=lambda event: (event.timestamp, event.id))
 
 
+@dataclass(frozen=True)
+class LabeledWindow:
+    """One labeled scoring window of real events — the training unit for W8 ingestion."""
+
+    window_id: str
+    label: int
+    events: tuple[IdrEvent, ...]
+
+    @property
+    def start(self) -> datetime:
+        return self.events[0].timestamp
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "LabeledWindow":
+        """Validate one decoded window object; raise ValueError naming what's wrong."""
+        missing = sorted({"window_id", "label", "events"} - raw.keys())
+        if missing:
+            raise ValueError(f"missing LabeledWindow fields: {', '.join(missing)}")
+        if raw["label"] not in (0, 1):
+            raise ValueError("label must be 0 or 1")
+        if not isinstance(raw["events"], list) or not raw["events"]:
+            raise ValueError("events must be a non-empty list")
+        return cls(
+            window_id=str(raw["window_id"]),
+            label=int(raw["label"]),
+            events=tuple(parse_events(raw["events"])),
+        )
+
+
 def _parse_timestamp(value: Any) -> datetime:
     if isinstance(value, datetime):
         parsed = value
