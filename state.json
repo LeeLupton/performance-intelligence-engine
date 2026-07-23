@@ -48,7 +48,7 @@
       },
       {
         "module": "src/idr_intelligence/models.py",
-        "role": "SelectiveSSM (time-aware S6 opt-in), ResidualGraphLayer, GatedAttentionPool, CampaignModel (default time_mode=global), checkpoint save/load"
+        "role": "SelectiveSSM (step() cell + hoisted forward), ResidualGraphLayer, GatedAttentionPool, CampaignModel, checkpoint save/load"
       },
       {
         "module": "src/idr_intelligence/simulator.py",
@@ -252,6 +252,11 @@
         "id": "ADR-26",
         "decision": "Flipped the shipped CampaignModel default time_mode from time_aware to global (and build_temporal_graph default likewise), acting on ADR-25's decisive evidence that global >= time_aware on every synthetic scenario and the delta feature already captures timing. The simpler mode is now default; per_entity/time_aware stay opt-in for real-data deployments. decay_half_life already defaulted None. Benchmark floors re-verified green with the global hybrid",
         "where": "reports/AUDIT.md consequence 2; user-delegated call"
+      },
+      {
+        "id": "ADR-27",
+        "decision": "W13 S6 step() cell: SelectiveSSM refactored so a single _recurrence path is shared by forward (loops it with input_proj hoisted over the whole sequence) and a public step(x_t, state, output, active, delta_t) cell for streaming/export. initial_state() gives a fresh (state, output); snapshot/restore is lossless. Numerical-equivalence test asserts looping step() == forward for both time modes; forward output is bit-identical to the pre-refactor loop so benchmark floors are unchanged. This is the prerequisite for W15 streaming and W17 ONNX/Rust export (one code path, no train/serve skew). Heavy throughput work (associative scan, torch.compile) deferred per roadmap",
+        "where": "docs/ROADMAP.md W13"
       }
     ]
   },
@@ -278,14 +283,15 @@
       "W14: structured per-entity evidence (occlusion attribution, typed edges, ATT&CK per entity) + analyst suppression allowlist",
       "Benchmark hardening: stale_preamble + timing_only scenarios; VERIFIED temporal physics (W11/W12) undifferentiated on synthetic data (global beats time-aware on timing_only 0.186 vs 0.210); documented in AUDIT.md",
       "Flip default time_mode time_aware->global (evidence-driven, ADR-26); benchmark floors green; default locked by test",
-      "v0.1 consolidation: README refreshed to match the shipped engine (capabilities, all CLI subcommands, full repo map, honest temporal-physics note, updated resume bullet)"
+      "v0.1 consolidation: README refreshed to match the shipped engine (capabilities, all CLI subcommands, full repo map, honest temporal-physics note, updated resume bullet)",
+      "W13: S6 step() cell (shared _recurrence, streaming step(), lossless snapshot/restore, numerical equivalence to forward) \u2014 enables W15/W17"
     ],
     "active": [
-      "v0.1 substantively complete: 13/14 roadmap workstreams + validated honest benchmark + evidence-driven default. Remaining roadmap (W13/W15/W16/W17 production path) is optional native-integration plumbing, pending user direction"
+      "W16: campaign-identity registry (stable IDs across scoring windows via entity-fingerprint matching; independent, pure-Python, useful now) OR W15 streaming scorer"
     ],
     "blocked": [
-      "Phase 4 (if pursued): W13 S6 step() cell, W15 streaming, W16 campaign identity, W17 ONNX+Rust bridge",
-      "W16 campaign identity registry (independent, usable now)"
+      "W15 streaming scorer (uses W13 step() + bounded_graph)",
+      "W17 ONNX export + Rust bridge (uses W13 step(); NEEDS user machine \u2014 Rust toolchain + idr-main)"
     ]
   },
   "evidence": {
@@ -293,7 +299,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "82 passed"
+        "result": "84 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
@@ -303,11 +309,11 @@
       {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "passed with global-default hybrid, 0 violations"
+        "result": "passed, 0 violations (forward output bit-identical after refactor)"
       }
     ],
     "tests": [
-      "tests: 82 \u2014 adds test_default_time_mode_is_global locking the flipped default (no time_weight param)"
+      "tests: 84 \u2014 adds step()-loop==forward numerical equivalence (both time modes) and lossless mid-scan snapshot/restore"
     ],
     "benchmarks": [
       {
@@ -409,11 +415,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:8277642-plus-default-flip",
+    "source_digest": "git:b9299e4-plus-w13",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "v0.1 consolidation: README brought up to date with the full shipped engine. Project is a complete, well-evidenced, honestly-bounded advisory engine (13/14 workstreams). Production path (Rust/ONNX) remains the optional next thread"
+      "summary": "Resumed production path: W13 S6 step() cell shipped (streaming/export prerequisite, forward unchanged). W16 or W15 next; W17 Rust bridge will need the user's machine"
     }
   }
 }
