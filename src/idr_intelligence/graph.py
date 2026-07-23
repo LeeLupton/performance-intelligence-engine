@@ -7,6 +7,7 @@ from datetime import datetime
 
 import numpy as np
 
+from .bounded_graph import EvictionRecord, GraphBudget
 from .features import FEATURE_DIM, project_event
 from .schema import IdrEvent
 
@@ -30,27 +31,40 @@ class TemporalGraph:
     deltas: np.ndarray
     evidence_ids: tuple[tuple[str, ...], ...]
     relation_counts: dict[str, int]
+    evictions: tuple[EvictionRecord, ...] = ()
 
     @property
     def node_count(self) -> int:
         return len(self.node_ids)
 
 
-def build_temporal_graph(events: list[IdrEvent], max_steps: int = 24, time_mode: str = "time_aware") -> TemporalGraph:
+def build_temporal_graph(
+    events: list[IdrEvent],
+    max_steps: int = 24,
+    time_mode: str = "time_aware",
+    decay_half_life: float | None = None,
+    budget: GraphBudget | None = None,
+) -> TemporalGraph:
     """Order events, accumulate per-entity histories, and normalize the adjacency.
 
     time_mode controls the elapsed-time signal:
       - global:     delta_seconds_log stays the whole-stream inter-event gap (legacy)
       - per_entity: delta_seconds_log becomes the gap since THAT entity was last seen
       - time_aware: per-entity gap, and the deltas channel feeds S6 discretization
-    The deltas array carries the per-entity gap for every mode; only the model's
-    time-aware path consumes it.
+    decay_half_life (seconds): with a value, off-diagonal edges are weighted by
+    0.5 ** (age / half_life) where age is the time since the edge was last
+    reinforced, so stale relationships fade. None keeps binary edges (legacy).
+    budget bounds the node set, evicting least-recently-seen entities with an
+    audit trail; None is unbounded (the demo default).
     """
     if time_mode not in TIME_MODES:
         raise ValueError(f"unknown time_mode: {time_mode}")
+    if decay_half_life is not None and decay_half_life <= 0:
+        raise ValueError("decay_half_life must be positive or None")
     if not events:
         raise ValueError("at least one event is required")
     ordered = sorted(events, key=lambda event: (event.timestamp, event.id))
+    last_event_time = ordered[-1].timestamp
     projections = []
     previous = ordered[0].timestamp
     for event in ordered:
@@ -58,18 +72,30 @@ def build_temporal_graph(events: list[IdrEvent], max_steps: int = 24, time_mode:
         projections.append(project_event(event, delta_seconds=global_delta))
         previous = event.timestamp
 
-    node_ids = tuple(dict.fromkeys(entity for projection in projections for entity in projection.entities))
+    # Pass 1: entity order + last-seen, to apply the node budget before building.
+    entity_last_seen: dict[str, datetime] = {}
+    for projection in projections:
+        for entity in projection.entities:
+            entity_last_seen[entity] = projection.event.timestamp
+    if budget is not None:
+        node_ids, evictions = budget.apply(entity_last_seen)
+    else:
+        node_ids, evictions = tuple(entity_last_seen), ()
     node_index = {node_id: index for index, node_id in enumerate(node_ids)}
+
     histories: list[list[np.ndarray]] = [[] for _ in node_ids]
     delta_histories: list[list[float]] = [[] for _ in node_ids]
     evidence: list[list[str]] = [[] for _ in node_ids]
     adjacency = np.eye(len(node_ids), dtype=np.float32)
+    edge_last_seen: dict[tuple[int, int], datetime] = {}
     relation_counts: dict[str, int] = {}
     last_seen: dict[str, datetime] = {}
 
     for projection in projections:
         timestamp = projection.event.timestamp
         for entity in projection.entities:
+            if entity not in node_index:
+                continue
             idx = node_index[entity]
             gap_seconds = (timestamp - last_seen[entity]).total_seconds() if entity in last_seen else 0.0
             last_seen[entity] = timestamp
@@ -84,9 +110,18 @@ def build_temporal_graph(events: list[IdrEvent], max_steps: int = 24, time_mode:
             delta_histories[idx].append(entity_delta)
             evidence[idx].append(projection.event.id)
         for left, right, relation in projection.edges:
+            if left not in node_index or right not in node_index:
+                continue
             i, j = node_index[left], node_index[right]
             adjacency[i, j] = adjacency[j, i] = 1.0
+            edge_last_seen[(min(i, j), max(i, j))] = timestamp
             relation_counts[relation] = relation_counts.get(relation, 0) + 1
+
+    if decay_half_life is not None:
+        for (i, j), seen in edge_last_seen.items():
+            age = (last_event_time - seen).total_seconds()
+            weight = np.float32(0.5 ** (age / decay_half_life))
+            adjacency[i, j] = adjacency[j, i] = weight
 
     sequences = np.zeros((len(node_ids), max_steps, FEATURE_DIM), dtype=np.float32)
     mask = np.zeros((len(node_ids), max_steps), dtype=np.float32)
@@ -111,4 +146,5 @@ def build_temporal_graph(events: list[IdrEvent], max_steps: int = 24, time_mode:
         deltas=deltas,
         evidence_ids=tuple(tuple(dict.fromkeys(ids)) for ids in evidence),
         relation_counts=relation_counts,
+        evictions=evictions,
     )

@@ -11,7 +11,7 @@ from .models import load_campaign_model
 from .pipeline import score_events
 from .schema import IdrEvent
 from .simulator import SCENARIOS, simulate_campaign
-from .training import rolling_origin_ablation, time_ablation, train_ablation
+from .training import decay_ablation, rolling_origin_ablation, time_ablation, train_ablation
 
 
 def main() -> None:
@@ -47,6 +47,11 @@ def main() -> None:
     timeabl.add_argument("--samples", type=int, default=80)
     timeabl.add_argument("--epochs", type=int, default=3)
 
+    decayabl = subparsers.add_parser("decay-ablation", help="compare edge-decay half-lives (none / 1h / 15m) on one scenario")
+    decayabl.add_argument("--scenario", default="distractor", choices=SCENARIOS)
+    decayabl.add_argument("--samples", type=int, default=80)
+    decayabl.add_argument("--epochs", type=int, default=3)
+
     args = parser.parse_args()
     if args.command == "demo":
         report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate, scenario=args.scenario, data=args.data)
@@ -66,6 +71,8 @@ def main() -> None:
         print(json.dumps(report, indent=2))
     elif args.command == "time-ablation":
         print(json.dumps(time_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
+    elif args.command == "decay-ablation":
+        print(json.dumps(decay_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
     else:
         events = []
         for line_number, line in enumerate(Path(args.events).read_text().splitlines(), start=1):

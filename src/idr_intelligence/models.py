@@ -114,7 +114,7 @@ class CampaignModel(nn.Module):
     node_head ranking as an ablation arm.
     """
 
-    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True, pooling: str = "attention", time_mode: str = "time_aware") -> None:
+    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True, pooling: str = "attention", time_mode: str = "time_aware", decay_half_life: float | None = None) -> None:
         super().__init__()
         if pooling not in ("attention", "uniform"):
             raise ValueError(f"unknown pooling mode: {pooling}")
@@ -127,6 +127,7 @@ class CampaignModel(nn.Module):
         self.use_gnn = use_gnn
         self.pooling = pooling
         self.time_mode = time_mode
+        self.decay_half_life = decay_half_life
         self.temporal = SelectiveSSM(feature_dim, hidden_dim, state_dim, time_aware=(use_s6 and time_mode == "time_aware")) if use_s6 else None
         self.static = (
             None
@@ -207,6 +208,7 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
             "use_gnn": model.use_gnn,
             "pooling": model.pooling,
             "time_mode": model.time_mode,
+            "decay_half_life": model.decay_half_life,
             "manifest": ModelManifest.create(calibration=model.calibration_label()).to_dict(),
             "feature_stats": model.feature_stats,
         },
@@ -241,6 +243,7 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
             use_gnn=bool(payload.get("use_gnn", True)),
             pooling=str(payload.get("pooling", _infer_pooling(state_dict))),
             time_mode=str(payload.get("time_mode", "time_aware" if "temporal.time_weight" in state_dict else "per_entity")),
+            decay_half_life=payload.get("decay_half_life"),
         )
         model.load_state_dict(state_dict)
         model.feature_stats = payload.get("feature_stats")
