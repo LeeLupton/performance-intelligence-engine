@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 import torch
-from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
+from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score
 from torch import nn
 
 from .config import DEFAULT_CONFIG
@@ -125,6 +125,22 @@ def _fit(model: CampaignModel, train: Batch, validation: Batch, epochs: int) -> 
             best_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
     if best_state is not None:
         model.load_state_dict(best_state)
+    _fit_temperature(model, validation)
+
+
+def _fit_temperature(model: CampaignModel, validation: Batch) -> None:
+    """Grid-fit the temperature buffer on validation NLL.
+
+    The grid includes T=1.0, so post-scaling validation NLL can never exceed
+    the unscaled NLL — that hard guarantee is what CI asserts.
+    """
+    model.eval()
+    loss_fn = nn.BCEWithLogitsLoss()
+    with torch.no_grad():
+        logits = model(validation.sequences, validation.mask, validation.adjacency).graph_logit
+        candidates = torch.cat([torch.tensor([1.0]), torch.logspace(-0.7, 0.7, 29)])
+        losses = [loss_fn(logits / t, validation.labels).item() for t in candidates]
+    model.temperature.fill_(float(candidates[int(np.argmin(losses))]))
 
 
 def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) -> float:
@@ -153,13 +169,33 @@ def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) 
 def _evaluate(model: CampaignModel, batch: Batch) -> dict[str, float]:
     model.eval()
     with torch.no_grad():
-        probability = torch.sigmoid(model(batch.sequences, batch.mask, batch.adjacency).graph_logit).numpy()
+        logits = model(batch.sequences, batch.mask, batch.adjacency).graph_logit
+        probability = model.calibrated_probability(logits).numpy()
     labels = batch.labels.numpy()
+    ece, mce = _calibration_errors(labels, probability)
     return {
         "roc_auc": round(float(roc_auc_score(labels, probability)), 6),
         "pr_auc": round(float(average_precision_score(labels, probability)), 6),
         "brier": round(float(brier_score_loss(labels, probability)), 6),
+        "log_loss": round(float(log_loss(labels, probability, labels=[0.0, 1.0])), 6),
+        "ece": round(ece, 6),
+        "max_calibration_error": round(mce, 6),
+        "temperature": round(float(model.temperature.item()), 6),
     }
+
+
+def _calibration_errors(labels: np.ndarray, probability: np.ndarray, bins: int = 15) -> tuple[float, float]:
+    """Expected and max calibration error over equal-width probability bins."""
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    expected, maximum = 0.0, 0.0
+    for low, high in zip(edges[:-1], edges[1:]):
+        selected = (probability > low) & (probability <= high) if low > 0 else (probability >= low) & (probability <= high)
+        if not selected.any():
+            continue
+        gap = abs(float(probability[selected].mean()) - float(labels[selected].mean()))
+        expected += float(selected.mean()) * gap
+        maximum = max(maximum, gap)
+    return expected, maximum
 
 
 def _slice(batch: Batch, start: int, end: int) -> Batch:

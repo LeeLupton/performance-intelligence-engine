@@ -43,12 +43,13 @@ class ModelManifest:
     calibration: str = "none"
 
     @classmethod
-    def create(cls, config: EngineConfig = DEFAULT_CONFIG) -> "ModelManifest":
+    def create(cls, config: EngineConfig = DEFAULT_CONFIG, calibration: str = "none") -> "ModelManifest":
         return cls(
             engine_version=ENGINE_VERSION,
             feature_schema_hash=feature_schema_hash(),
             config_hash=config.config_hash(),
             created_at=datetime.now(timezone.utc).isoformat(),
+            calibration=calibration,
         )
 
     def to_dict(self) -> dict[str, Any]:

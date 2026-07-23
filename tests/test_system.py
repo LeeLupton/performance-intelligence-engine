@@ -194,6 +194,60 @@ def test_finding_carries_provenance():
     assert len(finding.related_entities) <= DEFAULT_CONFIG.scoring.top_k
 
 
+def test_temperature_fit_never_worsens_validation_nll():
+    from idr_intelligence.training import _fit_temperature, chronological_split
+
+    batch = make_dataset(samples=20, seed=9, max_nodes=24, max_steps=8)
+    _, validation, _ = chronological_split(batch)
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    model.eval()
+    loss_fn = torch.nn.BCEWithLogitsLoss()
+    with torch.no_grad():
+        logits = model(validation.sequences, validation.mask, validation.adjacency).graph_logit
+        pre = loss_fn(logits, validation.labels).item()
+    _fit_temperature(model, validation)
+    with torch.no_grad():
+        post = loss_fn(logits / model.temperature, validation.labels).item()
+    assert post <= pre + 1e-9
+
+
+def test_calibration_errors_zero_when_perfect():
+    from idr_intelligence.training import _calibration_errors
+
+    labels = np.array([0.0, 0.0, 1.0, 1.0])
+    ece, mce = _calibration_errors(labels, np.array([0.0, 0.0, 1.0, 1.0]))
+    assert ece == 0.0 and mce == 0.0
+    ece_bad, mce_bad = _calibration_errors(labels, np.array([0.9, 0.9, 0.1, 0.1]))
+    assert ece_bad > 0.5 and mce_bad > 0.5
+
+
+def test_temperature_roundtrips_and_defaults(tmp_path):
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    model.temperature.fill_(2.5)
+    path = tmp_path / "calibrated.pt"
+    save_checkpoint(model, path)
+    payload = torch.load(path, weights_only=True)
+    assert payload["manifest"]["calibration"] == "temperature:2.500000"
+    loaded = load_campaign_model(path)
+    assert float(loaded.temperature.item()) == 2.5
+    stripped = dict(payload["state_dict"])
+    del stripped["temperature"]
+    payload["state_dict"] = stripped
+    del payload["manifest"]
+    older = tmp_path / "older.pt"
+    torch.save(payload, older)
+    assert float(load_campaign_model(older).temperature.item()) == 1.0
+
+
+def test_finding_reports_raw_and_calibrated():
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    model.temperature.fill_(2.0)
+    finding = score_events(simulate_campaign(label=1, seed=8), model)
+    assert finding.calibration == "temperature:2.000000"
+    raw, calibrated = finding.raw_escalation_probability, finding.escalation_probability
+    assert abs(calibrated - 0.5) <= abs(raw - 0.5) + 1e-9
+
+
 def test_attention_ranking_receives_training_gradient():
     batch = make_dataset(samples=20, seed=4, max_nodes=24, max_steps=8)
     model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
