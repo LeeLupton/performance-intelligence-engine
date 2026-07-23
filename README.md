@@ -1,5 +1,13 @@
 # Performance Intelligence Engine — IDR Intelligence
 
+[![CI](https://github.com/LeeLupton/performance-intelligence-engine/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/LeeLupton/performance-intelligence-engine/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/version-0.1.0-informational)](https://github.com/LeeLupton/performance-intelligence-engine)
+[![License](https://img.shields.io/github/license/LeeLupton/performance-intelligence-engine)](LICENSE)
+[![PyTorch](https://img.shields.io/badge/PyTorch-%E2%89%A52.2-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+
 A portfolio-grade temporal-graph research system for the `idr-main` intrusion detection and response pipeline.
 
 The project consumes the canonical JSON shape emitted by `idr_common::IdrEvent`, reconstructs relationships among hosts, processes, executable hashes, IPs, prefixes, ASNs, domains, gateways, and storage devices, then combines:
