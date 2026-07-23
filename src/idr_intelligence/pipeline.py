@@ -21,6 +21,8 @@ class IntelligenceFinding:
 
     campaign_id: str
     escalation_probability: float
+    raw_escalation_probability: float
+    calibration: str
     predicted_next_stage: str
     related_entities: tuple[str, ...]
     evidence_event_ids: tuple[str, ...]
@@ -51,14 +53,19 @@ def score_events(
     model.eval()
     with torch.no_grad():
         output = model(sequence, mask, adjacency)
-        probability = torch.sigmoid(output.graph_logit)[0].item()
+        raw_probability = torch.sigmoid(output.graph_logit)[0].item()
+        probability = model.calibrated_probability(output.graph_logit)[0].item()
         node_probability = torch.sigmoid(output.node_logits)[0].cpu().numpy()
+    temperature = float(model.temperature.item())
+    calibration = "none" if temperature == 1.0 else f"temperature:{temperature:.6f}"
     ranked = np.argsort(-node_probability)[: min(top_k, graph.node_count)]
     related = tuple(graph.node_ids[index] for index in ranked)
     evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in graph.evidence_ids[index]))
     return IntelligenceFinding(
         campaign_id=f"idr-campaign-{first.id[:8]}",
         escalation_probability=round(probability, 6),
+        raw_escalation_probability=round(raw_probability, 6),
+        calibration=calibration,
         predicted_next_stage=_next_stage(events),
         related_entities=related,
         evidence_event_ids=evidence,

@@ -84,7 +84,7 @@
       {
         "name": "checkpoint",
         "version": "v4",
-        "contract": "v3 fields + manifest {engine_version, feature_schema_hash, config_hash, created_at, calibration}; loader raises SchemaMismatchError when the manifest's feature schema disagrees with the runtime; manifestless v2/v3 and raw v1 checkpoints still load"
+        "contract": "v3 fields + manifest {engine_version, feature_schema_hash, config_hash, created_at, calibration}; loader raises SchemaMismatchError when the manifest's feature schema disagrees with the runtime; manifestless v2/v3 and raw v1 checkpoints still load; state_dict carries a temperature buffer (defaulted to 1.0 for older checkpoints) and the manifest records the calibration string"
       },
       {
         "name": "TemporalGraph",
@@ -93,8 +93,8 @@
       },
       {
         "name": "IntelligenceFinding",
-        "version": "v2",
-        "contract": "v1 fields + engine_version, feature_schema_hash, scored_at; mirrored in the Rust EventKind sketch so idr-sentinel can reject stale-model findings"
+        "version": "v3",
+        "contract": "v2 fields + raw_escalation_probability and calibration (method:value); escalation_probability is temperature-calibrated"
       }
     ],
     "decisions": [
@@ -157,6 +157,11 @@
         "id": "ADR-12",
         "decision": "All tunables live in config.EngineConfig (TOML-loadable, hashable); prior tables moved to config with schema.py re-export; ENGINE_VERSION defined in config to avoid the __init__ import cycle. Checkpoints embed a ModelManifest and refuse to load across feature-schema changes",
         "where": "docs/ROADMAP.md W2"
+      },
+      {
+        "id": "ADR-13",
+        "decision": "Temperature calibration fitted by validation-NLL grid search with T=1 always in the grid, making 'post-scaling validation NLL never worsens' a hard CI-assertable guarantee (the roadmap's ECE<=pre wording is not guaranteeable by NLL fitting). Findings report raw + calibrated probability + calibration string; ECE/log-loss/MCE added to ablation metrics",
+        "where": "docs/ROADMAP.md W3"
       }
     ]
   },
@@ -168,13 +173,14 @@
       "Design roadmap synthesized and committed (docs/ROADMAP.md); state task graph now mirrors it",
       "Adversarial diff verification of PR #6 (19 agents): 4 distinct upheld findings, all fixed in the W1 slice (variant round-trip, legacy-shape test, vacuous order-invariance test, roundtrip weight fidelity)",
       "W1: attention-gated pooling + evidence_precision_at_5 metric + fifth ablation arm",
-      "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml, provenance fields on findings, schema-hash rejection on load)"
+      "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml, provenance fields on findings, schema-hash rejection on load)",
+      "W3: temperature calibration (validation-NLL grid, T buffer in state_dict, manifest calibration string) + ECE/log-loss/MCE metrics + raw/calibrated finding fields"
     ],
     "active": [
-      "W3: calibration layer (temperature scaling on validation NLL, stored in the manifest) + ECE/log-loss/reliability metrics; CI asserts post-scaling ECE <= pre-scaling"
+      "W4: honest operating-point evaluation \u2014 malicious_rate labels replacing the leaky 50/50 parity alternation, pos_weight in _fit, recall@FPR{0.01,0.001} and precision@k metrics"
     ],
     "blocked": [
-      "Phase 1 remainder: W4 operating-point eval, W5 ATT&CK mapping",
+      "Phase 1 remainder: W5 ATT&CK mapping",
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
@@ -185,7 +191,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "26 passed"
+        "result": "30 passed"
       },
       {
         "cmd": "ruff check src tests",
@@ -198,13 +204,13 @@
         "result": "no issues in 11 source files"
       },
       {
-        "cmd": "idr-intelligence demo --samples 20 --epochs 1",
+        "cmd": "idr-intelligence demo --samples 80 --epochs 3 (calibrated)",
         "when": "2026-07-23",
-        "result": "finding carries engine_version/feature_schema_hash/scored_at; checkpoint manifest matches runtime hash e810c7e43117"
+        "result": "T=0.1995 (grid edge; demo models underconfident at 3 epochs); Brier improves every arm, s6_gnn 0.2159 -> 0.1279"
       }
     ],
     "tests": [
-      "tests: 26 \u2014 adds default.toml==DEFAULT_CONFIG no-op guarantee, config-hash content tracking, manifest schema-mismatch rejection, manifestless back-compat, finding provenance fields"
+      "tests: 30 \u2014 adds temperature-fit NLL non-worsening guarantee, calibration-error correctness on perfect/inverted toys, temperature round-trip + pre-temperature checkpoint default, raw-vs-calibrated finding fields"
     ],
     "benchmarks": [
       {
@@ -225,6 +231,21 @@
           "s6_gnn_uniform_pool": 0.6
         },
         "note": "ep@5 chance floor ~0.5 on 9-node graphs; 3 epochs is deliberately minimal \u2014 metric exists to make Phase 2 improvements measurable"
+      },
+      {
+        "run": "demo --samples 80 --epochs 3, seed 7, 2026-07-23, W3 calibrated",
+        "brier": {
+          "static_baseline": 0.1855,
+          "s6_only": 0.2211,
+          "gnn_only": 0.1567,
+          "s6_gnn": 0.1279,
+          "s6_gnn_uniform_pool": 0.0813
+        },
+        "ece": {
+          "s6_gnn": 0.3368,
+          "s6_gnn_uniform_pool": 0.2843
+        },
+        "note": "all arms select T=0.1995 (grid edge) \u2014 demo models are systematically underconfident at 3 epochs; interior T expected on real training budgets"
       }
     ]
   },
@@ -269,7 +290,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W1 merged (PR #8); W2 EngineConfig+ModelManifest implemented; W3 calibration is next"
+      "summary": "W2 merged (PR #9); W3 calibration implemented; W4 operating-point eval is next"
     }
   }
 }

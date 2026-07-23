@@ -123,6 +123,12 @@ class CampaignModel(nn.Module):
         self.attention = GatedAttentionPool(hidden_dim) if pooling == "attention" else None
         self.node_head = None if pooling == "attention" else nn.Linear(hidden_dim, 1)
         self.graph_head = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, 1))
+        self.temperature: torch.Tensor
+        self.register_buffer("temperature", torch.ones(1))
+
+    def calibrated_probability(self, logits: torch.Tensor) -> torch.Tensor:
+        """Temperature-scaled probability; T is fitted on validation NLL in training."""
+        return torch.sigmoid(logits / self.temperature.clamp_min(1e-3))
 
     def forward(self, sequences: torch.Tensor, mask: torch.Tensor, adjacency: torch.Tensor) -> ModelOutput:
         batch, nodes, steps, features = sequences.shape
@@ -158,6 +164,8 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
     """Persist weights, the exact model variant, and a provenance manifest."""
     from .registry import ModelManifest
 
+    temperature = float(model.temperature.item())
+    calibration = "none" if temperature == 1.0 else f"temperature:{temperature:.6f}"
     torch.save(
         {
             "state_dict": model.state_dict(),
@@ -167,7 +175,7 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
             "use_s6": model.use_s6,
             "use_gnn": model.use_gnn,
             "pooling": model.pooling,
-            "manifest": ModelManifest.create().to_dict(),
+            "manifest": ModelManifest.create(calibration=calibration).to_dict(),
         },
         path,
     )
@@ -189,7 +197,8 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
     if "manifest" in payload:
         ModelManifest.from_dict(payload["manifest"]).verify_feature_schema()
     if "state_dict" in payload:
-        state_dict = payload["state_dict"]
+        state_dict = dict(payload["state_dict"])
+        state_dict.setdefault("temperature", torch.ones(1))
         model = CampaignModel(
             int(payload["feature_dim"]),
             hidden_dim=int(payload["hidden_dim"]),
@@ -209,6 +218,7 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
         feature_dim = payload["static.0.weight"].shape[1] // 2
         state_dim = 1
         kept = dict(payload)
+    kept.setdefault("temperature", torch.ones(1))
     model = CampaignModel(
         feature_dim,
         hidden_dim=payload["node_head.weight"].shape[1],
