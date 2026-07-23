@@ -323,17 +323,80 @@ def test_drift_snapshot_flags_shifted_features(tmp_path, monkeypatch):
     model = load_campaign_model(tmp_path / "artifacts/hybrid_model.pt")
     assert model.feature_stats is not None
     in_distribution = score_events(simulate_campaign(1, 2000), model)
-    assert in_distribution.feature_drift is not None
-    assert "delta_seconds_log" not in in_distribution.feature_drift["flagged_features"]
     shifted = score_events(simulate_campaign(1, 2000, scenario="low_and_slow"), model)
+    assert in_distribution.feature_drift is not None
     assert "delta_seconds_log" in shifted.feature_drift["flagged_features"]
-    assert shifted.feature_drift["psi_max"] > in_distribution.feature_drift["psi_max"]
+    # Timing evasion moves the per-entity delta distribution enormously — the
+    # signal dwarfs the mild campaign-to-campaign variation of an in-distribution
+    # score (a relative claim; per-entity deltas are noisy at single-graph scale).
+    assert shifted.feature_drift["psi_max"] > 10 * in_distribution.feature_drift["psi_max"]
 
 
 def test_drift_is_none_without_snapshot():
     model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
     finding = score_events(simulate_campaign(1, 8), model)
     assert finding.feature_drift is None
+
+
+def test_per_entity_deltas_track_last_seen():
+    from idr_intelligence.graph import build_temporal_graph
+
+    base = {"source": "kernel_ebpf", "severity": "HIGH", "metadata": {"host": "alpha"}}
+    # Same host at t=0, +60s, +660s; a one-off host at +120s.
+    events = [
+        IdrEvent.from_dict({**base, "id": "a" * 8 + "-0000-0000-0000-000000000001", "timestamp": "2026-06-18T12:00:00Z", "kind": {"type": "socket_lineage", "pid": 1}}),
+        IdrEvent.from_dict({**base, "id": "b" * 8 + "-0000-0000-0000-000000000002", "timestamp": "2026-06-18T12:01:00Z", "kind": {"type": "suspicious_beacon", "pid": 1}}),
+        IdrEvent.from_dict({**base, "id": "c" * 8 + "-0000-0000-0000-000000000003", "timestamp": "2026-06-18T12:02:00Z", "kind": {"type": "socket_lineage", "pid": 1}, "metadata": {"host": "beta"}}),
+        IdrEvent.from_dict({**base, "id": "d" * 8 + "-0000-0000-0000-000000000004", "timestamp": "2026-06-18T12:11:00Z", "kind": {"type": "socket_lineage", "pid": 1}}),
+    ]
+    graph = build_temporal_graph(events, time_mode="time_aware")
+    host_idx = graph.node_ids.index("host:alpha")
+    row = graph.deltas[host_idx][graph.mask[host_idx] > 0]
+    # host:alpha seen at 0/+60/+660s → normalized log1p gaps 0, log1p(60)/12, log1p(600)/12
+    assert row[0] == 0.0
+    assert abs(row[1] - np.log1p(60) / 12) < 1e-5
+    assert abs(row[2] - np.log1p(600) / 12) < 1e-5
+    # global mode leaves the delta feature as the whole-stream gap, per_entity does not.
+    g_global = build_temporal_graph(events, time_mode="global")
+    g_per = build_temporal_graph(events, time_mode="per_entity")
+    assert not np.allclose(g_global.sequences[host_idx, :, 2], g_per.sequences[host_idx, :, 2])
+
+
+def test_time_weight_zero_is_identity():
+    from idr_intelligence.models import SelectiveSSM
+
+    torch.manual_seed(0)
+    base = SelectiveSSM(FEATURE_DIM, 12, 4, time_aware=False)
+    aware = SelectiveSSM(FEATURE_DIM, 12, 4, time_aware=True)
+    aware.load_state_dict(base.state_dict(), strict=False)  # copy shared weights
+    assert float(aware.time_weight.item()) == 0.0
+    seq = torch.randn(3, 6, FEATURE_DIM)
+    mask = torch.ones(3, 6)
+    deltas = torch.rand(3, 6) * 5.0
+    with torch.no_grad():
+        out_base = base(seq, mask)
+        out_aware = aware(seq, mask, deltas)
+    torch.testing.assert_close(out_base, out_aware)
+
+
+def test_time_mode_roundtrips_in_checkpoint(tmp_path):
+    for mode in ("global", "per_entity", "time_aware"):
+        model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode=mode)
+        path = tmp_path / f"{mode}.pt"
+        save_checkpoint(model, path)
+        loaded = load_campaign_model(path)
+        assert loaded.time_mode == mode
+        assert (loaded.temporal.time_weight is not None) == (mode == "time_aware")
+
+
+def test_time_ablation_reports_three_modes():
+    from idr_intelligence.training import time_ablation
+
+    report = time_ablation(scenario="low_and_slow", samples=20, epochs=1, seed=5)
+    assert set(report["per_mode"]) == {"global", "per_entity", "time_aware"}
+    assert report["best_mode"] in report["per_mode"]
+    for row in report["per_mode"].values():
+        assert 0.0 <= row["brier"] <= 1.0
 
 
 def test_identity_entities_and_edges():

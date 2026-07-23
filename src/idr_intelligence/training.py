@@ -31,6 +31,7 @@ class Batch:
     mask: torch.Tensor
     adjacency: torch.Tensor
     labels: torch.Tensor
+    deltas: torch.Tensor
 
 
 def set_seed(seed: int) -> None:
@@ -41,7 +42,7 @@ def set_seed(seed: int) -> None:
     torch.set_num_threads(1)
 
 
-def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, malicious_rate: float = 0.5, scenario: str = "v0_easy") -> Batch:
+def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, malicious_rate: float = 0.5, scenario: str = "v0_easy", time_mode: str = "time_aware") -> Batch:
     """Simulate benign/malicious campaigns with seeded random labels and pad into one Batch.
 
     Labels are drawn per-sample (not the former index%2 alternation, which
@@ -56,37 +57,41 @@ def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONF
     sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
     mask = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
     adjacency = np.zeros((samples, max_nodes, max_nodes), dtype=np.float32)
+    deltas = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
     labels = []
     for index in range(samples):
         label = int(label_row[index])
-        graph = build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), max_steps=max_steps)
+        graph = build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), max_steps=max_steps, time_mode=time_mode)
         count = min(graph.node_count, max_nodes)
         sequences[index, :count] = graph.sequences[:count]
         mask[index, :count] = graph.mask[:count]
         adjacency[index, :count, :count] = graph.adjacency[:count, :count]
+        deltas[index, :count] = graph.deltas[:count]
         if count < max_nodes:
             adjacency[index, count:, count:] = np.eye(max_nodes - count, dtype=np.float32)
         labels.append(float(label))
-    return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
+    return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels), torch.from_numpy(deltas))
 
 
-def windows_to_batch(windows: list, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps) -> Batch:
+def windows_to_batch(windows: list, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, time_mode: str = "time_aware") -> Batch:
     """Pad chronologically-sorted labeled windows into one Batch, zero model changes."""
     samples = len(windows)
     sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
     mask = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
     adjacency = np.zeros((samples, max_nodes, max_nodes), dtype=np.float32)
+    deltas = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
     labels = []
     for index, window in enumerate(windows):
-        graph = build_temporal_graph(list(window.events), max_steps=max_steps)
+        graph = build_temporal_graph(list(window.events), max_steps=max_steps, time_mode=time_mode)
         count = min(graph.node_count, max_nodes)
         sequences[index, :count] = graph.sequences[:count]
         mask[index, :count] = graph.mask[:count]
         adjacency[index, :count, :count] = graph.adjacency[:count, :count]
+        deltas[index, :count] = graph.deltas[:count]
         if count < max_nodes:
             adjacency[index, count:, count:] = np.eye(max_nodes - count, dtype=np.float32)
         labels.append(float(window.label))
-    return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
+    return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels), torch.from_numpy(deltas))
 
 
 def _require_two_class_segments(labels: torch.Tensor) -> None:
@@ -181,13 +186,13 @@ def _fit(model: CampaignModel, train: Batch, validation: Batch, epochs: int) -> 
     for _ in range(epochs):
         model.train()
         optimizer.zero_grad()
-        loss = loss_fn(model(train.sequences, train.mask, train.adjacency).graph_logit, train.labels)
+        loss = loss_fn(model(train.sequences, train.mask, train.adjacency, train.deltas).graph_logit, train.labels)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         model.eval()
         with torch.no_grad():
-            validation_loss = loss_fn(model(validation.sequences, validation.mask, validation.adjacency).graph_logit, validation.labels).item()
+            validation_loss = loss_fn(model(validation.sequences, validation.mask, validation.adjacency, validation.deltas).graph_logit, validation.labels).item()
         if validation_loss < best_loss:
             best_loss = validation_loss
             best_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
@@ -207,7 +212,7 @@ def _fit_calibration(model: CampaignModel, validation: Batch) -> None:
     """
     model.eval()
     with torch.no_grad():
-        logits = model(validation.sequences, validation.mask, validation.adjacency).graph_logit
+        logits = model(validation.sequences, validation.mask, validation.adjacency, validation.deltas).graph_logit
     scale, bias = affine_calibration_params(logits, validation.labels)
     model.temperature.fill_(1.0 / scale)
     model.cal_bias.fill_(bias)
@@ -271,24 +276,55 @@ def scenario_generalization(model: CampaignModel, seed: int, samples: int = 20) 
         labels = []
         for index in range(samples):
             label = index % 2
-            graphs.append(build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario)))
+            graphs.append(build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), time_mode=model.time_mode))
             labels.append(float(label))
         max_nodes = max(graph.node_count for graph in graphs)
         max_steps = max(graph.sequences.shape[1] for graph in graphs)
         sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
         mask = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
         adjacency = np.zeros((samples, max_nodes, max_nodes), dtype=np.float32)
+        deltas = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
         for index, graph in enumerate(graphs):
             count = graph.node_count
-            sequences[index, :count, : graph.sequences.shape[1]] = graph.sequences
-            mask[index, :count, : graph.sequences.shape[1]] = graph.mask
+            steps = graph.sequences.shape[1]
+            sequences[index, :count, :steps] = graph.sequences
+            mask[index, :count, :steps] = graph.mask
             adjacency[index, :count, :count] = graph.adjacency
+            deltas[index, :count, :steps] = graph.deltas
             if count < max_nodes:
                 adjacency[index, count:, count:] = np.eye(max_nodes - count, dtype=np.float32)
-        batch = Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
+        batch = Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels), torch.from_numpy(deltas))
         metrics = _evaluate(model, batch)
         rows[scenario] = {key: metrics[key] for key in ("roc_auc", "brier", "recall_at_fpr_1pct")}
     return rows
+
+
+def time_ablation(scenario: str = "low_and_slow", samples: int = 80, epochs: int = 3, seed: int = 7) -> dict:
+    """Compare time modes (global / per_entity / time_aware) for the hybrid on one scenario.
+
+    This is W11's acceptance test: the low_and_slow evasion family is where an
+    entity-relative clock and time-aware decay should matter most. Whether they
+    actually help at this budget is an honest empirical outcome, not assumed.
+    """
+    if scenario not in SCENARIOS:
+        raise ValueError(f"unknown scenario: {scenario}")
+    per_mode: dict[str, dict[str, float]] = {}
+    for mode in ("global", "per_entity", "time_aware"):
+        set_seed(seed)
+        train, validation, test = chronological_split(
+            make_dataset(samples=samples, seed=seed, scenario=scenario, time_mode=mode)
+        )
+        model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, time_mode=mode)
+        _fit(model, train, validation, epochs)
+        metrics = _evaluate(model, test)
+        per_mode[mode] = {key: metrics[key] for key in ("brier", "roc_auc", "pr_auc")}
+    return {
+        "scenario": scenario,
+        "metric": "brier",
+        "per_mode": per_mode,
+        "best_mode": min(per_mode, key=lambda mode: per_mode[mode]["brier"]),
+        "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
+    }
 
 
 VARIANTS: dict[str, dict[str, Any]] = {
@@ -379,12 +415,13 @@ def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) 
     model.eval()
     precisions = []
     for seed in seeds:
-        graph = build_temporal_graph(simulate_campaign(1, seed))
+        graph = build_temporal_graph(simulate_campaign(1, seed), time_mode=model.time_mode)
         with torch.no_grad():
             output = model(
                 torch.from_numpy(graph.sequences).unsqueeze(0),
                 torch.from_numpy(graph.mask).unsqueeze(0),
                 torch.from_numpy(graph.adjacency).unsqueeze(0),
+                torch.from_numpy(graph.deltas).unsqueeze(0),
             )
         top = torch.argsort(output.node_logits[0], descending=True)[: min(k, graph.node_count)].tolist()
         core = {index for index, event_ids in enumerate(graph.evidence_ids) if len(event_ids) >= 2}
@@ -395,7 +432,7 @@ def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) 
 def _evaluate(model: CampaignModel, batch: Batch) -> dict[str, float]:
     model.eval()
     with torch.no_grad():
-        logits = model(batch.sequences, batch.mask, batch.adjacency).graph_logit
+        logits = model(batch.sequences, batch.mask, batch.adjacency, batch.deltas).graph_logit
         probability = model.calibrated_probability(logits).numpy()
     labels = batch.labels.numpy()
     ece, mce = _calibration_errors(labels, probability)
@@ -454,4 +491,4 @@ def _calibration_errors(labels: np.ndarray, probability: np.ndarray, bins: int =
 
 
 def _slice(batch: Batch, start: int, end: int) -> Batch:
-    return Batch(batch.sequences[start:end], batch.mask[start:end], batch.adjacency[start:end], batch.labels[start:end])
+    return Batch(batch.sequences[start:end], batch.mask[start:end], batch.adjacency[start:end], batch.labels[start:end], batch.deltas[start:end])

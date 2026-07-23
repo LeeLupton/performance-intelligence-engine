@@ -11,7 +11,7 @@ from .models import load_campaign_model
 from .pipeline import score_events
 from .schema import IdrEvent
 from .simulator import SCENARIOS, simulate_campaign
-from .training import rolling_origin_ablation, train_ablation
+from .training import rolling_origin_ablation, time_ablation, train_ablation
 
 
 def main() -> None:
@@ -42,6 +42,11 @@ def main() -> None:
     ablation.add_argument("--malicious-rate", type=float, default=0.5)
     ablation.add_argument("--scenario", default="v0_easy", choices=SCENARIOS)
 
+    timeabl = subparsers.add_parser("time-ablation", help="compare global / per-entity / time-aware S6 on one scenario")
+    timeabl.add_argument("--scenario", default="low_and_slow", choices=SCENARIOS)
+    timeabl.add_argument("--samples", type=int, default=80)
+    timeabl.add_argument("--epochs", type=int, default=3)
+
     args = parser.parse_args()
     if args.command == "demo":
         report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate, scenario=args.scenario, data=args.data)
@@ -59,6 +64,8 @@ def main() -> None:
             replicates=args.replicates, malicious_rate=args.malicious_rate, scenario=args.scenario,
         )
         print(json.dumps(report, indent=2))
+    elif args.command == "time-ablation":
+        print(json.dumps(time_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
     else:
         events = []
         for line_number, line in enumerate(Path(args.events).read_text().splitlines(), start=1):
