@@ -28,8 +28,13 @@ EventKind::IntelligenceFinding {
     engine_version: String,
     feature_schema_hash: String,
     scored_at: DateTime<Utc>,
+    observed_attack_stages: Vec<AttackStage>, // {tactic, technique, kind_type, first_event_id}
 }
 ```
+
+`predicted_next_stage` and `observed_attack_stages` come from a deterministic
+kind→ATT&CK table (`attack.py`), never from the model — the field idr-sentinel
+corroborates stays auditable.
 
 `feature_schema_hash` identifies the exact feature semantics (names plus prior
 tables) the scoring model was trained under; `idr-sentinel` can deterministically

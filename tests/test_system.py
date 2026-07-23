@@ -54,7 +54,8 @@ def test_finding_retains_primary_evidence():
     assert 0.0 <= finding.escalation_probability <= 1.0
     assert finding.evidence_event_ids
     assert finding.related_entities
-    assert finding.predicted_next_stage == "impact_or_exfiltration"
+    assert finding.predicted_next_stage == "impact"
+    assert {stage["tactic"] for stage in finding.observed_attack_stages} >= {"execution", "command-and-control", "exfiltration"}
 
 
 def test_schema_rejects_missing_fields():
@@ -192,6 +193,44 @@ def test_finding_carries_provenance():
     assert finding.feature_schema_hash == feature_schema_hash()
     assert datetime.fromisoformat(finding.scored_at).tzinfo is not None
     assert len(finding.related_entities) <= DEFAULT_CONFIG.scoring.top_k
+
+
+def test_attack_table_covers_every_scored_kind():
+    from idr_intelligence.attack import KIND_TO_ATTACK, TACTIC_ORDER
+    from idr_intelligence.schema import KIND_PRIOR
+
+    unmapped = set(KIND_PRIOR) - set(KIND_TO_ATTACK)
+    assert unmapped == {"triage_classification"}
+    for mapping in KIND_TO_ATTACK.values():
+        assert mapping["tactic"] in TACTIC_ORDER
+        assert mapping["technique"].startswith("T")
+
+
+def test_attack_stages_are_time_ordered_with_evidence():
+    from idr_intelligence.attack import observed_attack_stages
+
+    events = simulate_campaign(label=1, seed=8)
+    stages = observed_attack_stages(events)
+    ids = [stage["first_event_id"] for stage in stages]
+    by_id = {event.id: event for event in events}
+    times = [by_id[event_id].timestamp for event_id in ids]
+    assert times == sorted(times)
+    assert stages[0]["tactic"] == "execution"
+    assert stages[-1]["tactic"] == "exfiltration"
+
+
+def test_next_stage_respects_progression_not_presence():
+    from idr_intelligence.attack import predict_next_stage
+
+    base = {"source": "kernel_ebpf", "severity": "HIGH", "metadata": {"host": "alpha"}}
+    socket = IdrEvent.from_dict({**base, "id": "a" * 8 + "-0000-0000-0000-000000000001", "timestamp": "2026-06-18T12:00:00Z", "kind": {"type": "socket_lineage", "pid": 1}})
+    nvme = IdrEvent.from_dict({**base, "id": "b" * 8 + "-0000-0000-0000-000000000002", "timestamp": "2026-06-18T11:00:00Z", "kind": {"type": "nvme_latency_anomaly", "device": "nvme0n1"}})
+    assert predict_next_stage([socket]) == "persistence"
+    assert predict_next_stage([nvme, socket]) == "impact"
+    assert predict_next_stage([socket, nvme]) == "impact"
+    assert predict_next_stage([]) == "unknown"
+    impossible = IdrEvent.from_dict({**base, "id": "c" * 8 + "-0000-0000-0000-000000000003", "timestamp": "2026-06-18T13:00:00Z", "kind": {"type": "impossible_state"}})
+    assert predict_next_stage([impossible]) == "kill-chain-complete"
 
 
 def test_labels_are_random_but_split_safe():
