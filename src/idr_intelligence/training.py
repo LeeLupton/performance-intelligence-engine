@@ -1,3 +1,5 @@
+"""Chronological four-way ablation benchmark over simulated campaigns."""
+
 from __future__ import annotations
 
 import json
@@ -12,12 +14,17 @@ from torch import nn
 
 from .features import FEATURE_DIM
 from .graph import build_temporal_graph
-from .models import CampaignModel
+from .models import CampaignModel, save_checkpoint
 from .simulator import simulate_campaign
+
+HIDDEN_DIM = 24
+STATE_DIM = 6
 
 
 @dataclass(frozen=True)
 class Batch:
+    """Padded tensors for a set of campaign graphs plus their labels."""
+
     sequences: torch.Tensor
     mask: torch.Tensor
     adjacency: torch.Tensor
@@ -25,6 +32,7 @@ class Batch:
 
 
 def set_seed(seed: int) -> None:
+    """Seed every RNG in play and pin Torch to one CPU thread."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -32,6 +40,7 @@ def set_seed(seed: int) -> None:
 
 
 def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = 24, max_steps: int = 16) -> Batch:
+    """Simulate alternating benign/malicious campaigns and pad them into one Batch."""
     if samples < 20:
         raise ValueError("samples must be at least 20")
     sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
@@ -52,12 +61,14 @@ def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = 24, max_step
 
 
 def chronological_split(batch: Batch) -> tuple[Batch, Batch, Batch]:
+    """Split 60/20/20 by sample index, which the simulator orders by start time."""
     size = len(batch.labels)
     train_end, validation_end = int(size * 0.60), int(size * 0.80)
     return _slice(batch, 0, train_end), _slice(batch, train_end, validation_end), _slice(batch, validation_end, size)
 
 
 def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None) -> dict:
+    """Train all four variants under one split, save the hybrid, return the report."""
     set_seed(seed)
     train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed))
     variants = {
@@ -68,7 +79,7 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
     }
     results, trained = {}, {}
     for name, (use_s6, use_gnn) in variants.items():
-        model = CampaignModel(FEATURE_DIM, hidden_dim=24, state_dim=6, use_s6=use_s6, use_gnn=use_gnn)
+        model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, use_s6=use_s6, use_gnn=use_gnn)
         _fit(model, train, validation, epochs)
         trained[name] = model
         results[name] = _evaluate(model, test)
@@ -81,7 +92,7 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
     }
     artifact = Path("artifacts/hybrid_model.pt")
     artifact.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(trained["s6_gnn"].state_dict(), artifact)
+    save_checkpoint(trained["s6_gnn"], artifact)
     if output:
         path = Path(output)
         path.parent.mkdir(parents=True, exist_ok=True)

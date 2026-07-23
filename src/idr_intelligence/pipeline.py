@@ -1,3 +1,5 @@
+"""Evidence-linked inference over IdrEvent streams."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -12,6 +14,8 @@ from .schema import IdrEvent
 
 @dataclass(frozen=True)
 class IntelligenceFinding:
+    """Advisory campaign hypothesis carrying the event IDs that back it."""
+
     campaign_id: str
     escalation_probability: float
     predicted_next_stage: str
@@ -26,7 +30,9 @@ class IntelligenceFinding:
 
 
 def score_events(events: list[IdrEvent], model: CampaignModel, model_version: str = "development", max_steps: int = 24) -> IntelligenceFinding:
+    """Score one event set and return a finding with ranked entities and evidence."""
     graph = build_temporal_graph(events, max_steps=max_steps)
+    first = min(events, key=lambda event: (event.timestamp, event.id))
     sequence = torch.from_numpy(graph.sequences).unsqueeze(0)
     mask = torch.from_numpy(graph.mask).unsqueeze(0)
     adjacency = torch.from_numpy(graph.adjacency).unsqueeze(0)
@@ -39,7 +45,7 @@ def score_events(events: list[IdrEvent], model: CampaignModel, model_version: st
     related = tuple(graph.node_ids[index] for index in ranked)
     evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in graph.evidence_ids[index]))
     return IntelligenceFinding(
-        campaign_id=f"idr-campaign-{events[0].id[:8]}",
+        campaign_id=f"idr-campaign-{first.id[:8]}",
         escalation_probability=round(probability, 6),
         predicted_next_stage=_next_stage(events),
         related_entities=related,
@@ -51,6 +57,7 @@ def score_events(events: list[IdrEvent], model: CampaignModel, model_version: st
 
 
 def _next_stage(events: list[IdrEvent]) -> str:
+    """Rule-based (not learned) next-stage hypothesis from the kinds present."""
     kinds = {event.kind_type for event in events}
     if "nvme_latency_anomaly" in kinds:
         return "impact_or_exfiltration"
