@@ -265,6 +265,28 @@ def test_single_class_segment_fails_loudly(tmp_path, monkeypatch):
         train_ablation(epochs=1, data=str(data_dir))
 
 
+def test_rolling_origin_ablation_reports_statistical_verdict():
+    from idr_intelligence.training import VARIANTS, rolling_origin_ablation
+
+    report = rolling_origin_ablation(samples=30, epochs=1, seed=17, folds=2, replicates=2)
+    assert set(report["per_variant"]) == set(VARIANTS)
+    for row in report["per_variant"].values():
+        assert row["folds_evaluated"] >= 1
+        assert row["std_brier"] >= 0.0
+    decision = report["decision"]
+    assert decision["winner"] != decision["runner_up"]
+    assert decision["significant"] == (decision["margin"] > decision["paired_std"])
+    expected = decision["winner"] if decision["significant"] else "tie"
+    assert report["best_model"] == expected
+
+
+def test_rolling_origin_rejects_bad_folds():
+    from idr_intelligence.training import rolling_origin_ablation
+
+    with pytest.raises(ValueError, match="folds"):
+        rolling_origin_ablation(samples=30, epochs=1, folds=5)
+
+
 def test_benchmark_suite_passes_current_floors(tmp_path, monkeypatch):
     from idr_intelligence.benchmark import run_benchmark
 

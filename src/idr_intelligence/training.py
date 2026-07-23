@@ -141,16 +141,9 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
         source = "simulator"
         observed_rate = malicious_rate
     train, validation, test = chronological_split(batch)
-    variants: dict[str, dict[str, Any]] = {
-        "static_baseline": {"use_s6": False, "use_gnn": False},
-        "s6_only": {"use_s6": True, "use_gnn": False},
-        "gnn_only": {"use_s6": False, "use_gnn": True},
-        "s6_gnn": {"use_s6": True, "use_gnn": True},
-        "s6_gnn_uniform_pool": {"use_s6": True, "use_gnn": True, "pooling": "uniform"},
-    }
     evidence_seeds = [seed + samples + offset for offset in range(8)]
     results, trained, evidence_precision = {}, {}, {}
-    for name, kwargs in variants.items():
+    for name, kwargs in VARIANTS.items():
         model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, **kwargs)
         _fit(model, train, validation, epochs)
         trained[name] = model
@@ -260,6 +253,84 @@ def scenario_generalization(model: CampaignModel, seed: int, samples: int = 20) 
         metrics = _evaluate(model, batch)
         rows[scenario] = {key: metrics[key] for key in ("roc_auc", "brier", "recall_at_fpr_1pct")}
     return rows
+
+
+VARIANTS: dict[str, dict[str, Any]] = {
+    "static_baseline": {"use_s6": False, "use_gnn": False},
+    "s6_only": {"use_s6": True, "use_gnn": False},
+    "gnn_only": {"use_s6": False, "use_gnn": True},
+    "s6_gnn": {"use_s6": True, "use_gnn": True},
+    "s6_gnn_uniform_pool": {"use_s6": True, "use_gnn": True, "pooling": "uniform"},
+}
+
+
+def rolling_origin_ablation(
+    samples: int = 60,
+    epochs: int = 2,
+    seed: int = 7,
+    folds: int = 3,
+    replicates: int = 3,
+    malicious_rate: float = 0.5,
+    scenario: str = "v0_easy",
+) -> dict:
+    """Expanding-window temporal CV with seed replicates over every variant.
+
+    Decision metric is Brier (ranking saturates on synthetic data). best_model
+    is declared only when the winner beats the runner-up by more than the
+    paired per-fold std of their differences; otherwise the verdict is "tie" —
+    with 16 test samples and one seed, a single-split winner is noise.
+    """
+    if folds not in (2, 3):
+        raise ValueError("folds must be 2 or 3 (expanding windows of 15% with a 40% minimum origin)")
+    fold_offsets = list(range(3 - folds, 3))
+    scores: dict[str, list[float]] = {name: [] for name in VARIANTS}
+    pr_scores: dict[str, list[float]] = {name: [] for name in VARIANTS}
+    for replicate in range(replicates):
+        replicate_seed = seed + replicate * 10_000
+        set_seed(replicate_seed)
+        batch = make_dataset(samples=samples, seed=replicate_seed, malicious_rate=malicious_rate, scenario=scenario)
+        size = len(batch.labels)
+        for offset in fold_offsets:
+            train_end = int(size * (0.40 + offset * 0.15))
+            validation_end = int(size * (0.55 + offset * 0.15))
+            test_end = int(size * (0.70 + offset * 0.15))
+            train = _slice(batch, 0, train_end)
+            validation = _slice(batch, train_end, validation_end)
+            test = _slice(batch, validation_end, test_end)
+            if any(part.labels.sum() in (0, len(part.labels)) for part in (train, validation, test)):
+                continue
+            for name, kwargs in VARIANTS.items():
+                model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, **kwargs)
+                _fit(model, train, validation, epochs)
+                metrics = _evaluate(model, test)
+                scores[name].append(metrics["brier"])
+                pr_scores[name].append(metrics["pr_auc"])
+    if not next(iter(scores.values())):
+        raise ValueError("every fold was single-class; increase samples or folds")
+    per_variant = {
+        name: {
+            "mean_brier": round(float(np.mean(values)), 6),
+            "std_brier": round(float(np.std(values, ddof=1)) if len(values) > 1 else 0.0, 6),
+            "mean_pr_auc": round(float(np.mean(pr_scores[name])), 6),
+            "folds_evaluated": len(values),
+        }
+        for name, values in scores.items()
+    }
+    ordered = sorted(per_variant, key=lambda name: per_variant[name]["mean_brier"])
+    best, runner_up = ordered[0], ordered[1]
+    paired = np.asarray(scores[runner_up]) - np.asarray(scores[best])
+    margin = round(float(paired.mean()), 6)
+    paired_std = round(float(paired.std(ddof=1)) if len(paired) > 1 else 0.0, 6)
+    significant = margin > paired_std
+    return {
+        "metric": "brier",
+        "folds": folds,
+        "replicates": replicates,
+        "per_variant": per_variant,
+        "best_model": best if significant else "tie",
+        "decision": {"winner": best, "runner_up": runner_up, "margin": margin, "paired_std": paired_std, "significant": significant},
+        "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
+    }
 
 
 def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) -> float:

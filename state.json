@@ -204,6 +204,11 @@
         "id": "ADR-18",
         "decision": "Real labeled windows enter via --data with zero model changes (windows_to_batch reuses build_temporal_graph); the report records data_source and the observed malicious rate; simulator diagnostics (evidence precision, scenario generalization) still run as synthetic sidecars",
         "where": "docs/ROADMAP.md W8"
+      },
+      {
+        "id": "ADR-19",
+        "decision": "rolling_origin_ablation: expanding-window folds (40% minimum origin, 15% val/test blocks, folds<=3) x seed replicates; Brier is the decision metric (ranking saturates); best_model declared only when the paired margin exceeds the paired per-fold std, else 'tie'. First run confirms the roadmap's claim: 9-fold verdict is tie (margin 0.024 vs std 0.124) \u2014 single-split winners were noise",
+        "where": "docs/ROADMAP.md W9"
       }
     ]
   },
@@ -221,13 +226,13 @@
       "W5: ATT&CK mapping (attack.py) \u2014 Phase 1 complete",
       "W6: graded + adversarial simulator scenarios with per-scenario generalization table",
       "W7: versioned benchmark suite (benchmarks/v1.json, runner, CI gate) + feature-snapshot drift on findings",
-      "W8: LabeledWindow schema + dataio loader + --data training path"
+      "W8: LabeledWindow schema + dataio loader + --data training path",
+      "W9: rolling-origin CV + replicates with statistical best-model verdict (CLI: ablation)"
     ],
     "active": [
-      "W9: rolling-origin temporal CV with seed replicates; best_model only declared beyond paired per-fold std"
+      "W10: identity entities \u2014 user:/session:/cloud: nodes, authenticates_to/owns/spawns edges, has_user/cross_host_user features, lateral-movement scenario (closes Phase 2)"
     ],
     "blocked": [
-      "Phase 2 remainder: W10 identity entities",
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
@@ -238,16 +243,21 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "53 passed"
+        "result": "55 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
         "when": "2026-07-23",
         "result": "clean; 14 source files"
+      },
+      {
+        "cmd": "idr-intelligence ablation --samples 60 --epochs 2 --folds 3 --replicates 3",
+        "when": "2026-07-23",
+        "result": "verdict: tie \u2014 gnn_only leads by 0.024 Brier vs paired std 0.124 over 9 folds; single-split winners confirmed noise"
       }
     ],
     "tests": [
-      "tests: 53 \u2014 adds LabeledWindow validation, loader ordering + file:line errors + empty/missing dirs, full --data training roundtrip (24 windows, split 14/5/5), loud single-class failure"
+      "tests: 55 \u2014 adds rolling-origin verdict structure + significance-consistency assertions, bad-folds rejection"
     ],
     "benchmarks": [
       {
@@ -297,6 +307,18 @@
           "hash_rotation": 0.1948
         },
         "note": "first measurable cross-scenario differentiation; ranking metrics still saturate \u2014 W9 replicates and larger eval sets sharpen this"
+      },
+      {
+        "run": "ablation 60/2 folds=3 replicates=3 seed 7, 2026-07-23",
+        "verdict": "tie",
+        "mean_brier": {
+          "gnn_only": 0.1659,
+          "s6_gnn_uniform_pool": 0.1899,
+          "s6_gnn": 0.1901,
+          "s6_only": 0.21,
+          "static_baseline": 0.218
+        },
+        "note": "margin 0.024 < paired std 0.124 \u2014 the statistical machinery correctly refuses to crown a winner at this budget"
       }
     ]
   },
@@ -341,7 +363,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W7 merged (PR #14); W8 LabeledWindow ingestion implemented; W9 rolling-origin CV next"
+      "summary": "W8 in PR #15; W9 rolling-origin CV implemented (first honest 'tie' verdict); W10 identity entities closes Phase 2 next"
     }
   }
 }

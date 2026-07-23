@@ -11,7 +11,7 @@ from .models import load_campaign_model
 from .pipeline import score_events
 from .schema import IdrEvent
 from .simulator import SCENARIOS, simulate_campaign
-from .training import train_ablation
+from .training import rolling_origin_ablation, train_ablation
 
 
 def main() -> None:
@@ -34,6 +34,14 @@ def main() -> None:
     bench = subparsers.add_parser("benchmark", help="run a frozen benchmark manifest; exit 1 on floor violations")
     bench.add_argument("--manifest", default="benchmarks/v1.json")
 
+    ablation = subparsers.add_parser("ablation", help="rolling-origin CV with seed replicates; declares best_model or tie")
+    ablation.add_argument("--samples", type=int, default=60)
+    ablation.add_argument("--epochs", type=int, default=2)
+    ablation.add_argument("--folds", type=int, default=3)
+    ablation.add_argument("--replicates", type=int, default=3)
+    ablation.add_argument("--malicious-rate", type=float, default=0.5)
+    ablation.add_argument("--scenario", default="v0_easy", choices=SCENARIOS)
+
     args = parser.parse_args()
     if args.command == "demo":
         report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate, scenario=args.scenario, data=args.data)
@@ -45,6 +53,12 @@ def main() -> None:
         print(json.dumps({key: result[key] for key in ("suite_version", "passed", "violations")}, indent=2))
         if not result["passed"]:
             raise SystemExit(1)
+    elif args.command == "ablation":
+        report = rolling_origin_ablation(
+            samples=args.samples, epochs=args.epochs, folds=args.folds,
+            replicates=args.replicates, malicious_rate=args.malicious_rate, scenario=args.scenario,
+        )
+        print(json.dumps(report, indent=2))
     else:
         events = []
         for line_number, line in enumerate(Path(args.events).read_text().splitlines(), start=1):
