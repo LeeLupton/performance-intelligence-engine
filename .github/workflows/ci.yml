@@ -57,3 +57,6 @@ jobs:
 
       - name: Run type check
         run: .venv/bin/python -m mypy src
+
+      - name: Run benchmark floors
+        run: cd "$(mktemp -d)" && "$GITHUB_WORKSPACE/.venv/bin/python" -m idr_intelligence.cli benchmark --manifest "$GITHUB_WORKSPACE/benchmarks/v1.json"

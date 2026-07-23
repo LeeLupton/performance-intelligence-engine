@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -193,6 +194,49 @@ def test_finding_carries_provenance():
     assert finding.feature_schema_hash == feature_schema_hash()
     assert datetime.fromisoformat(finding.scored_at).tzinfo is not None
     assert len(finding.related_entities) <= DEFAULT_CONFIG.scoring.top_k
+
+
+def test_benchmark_suite_passes_current_floors(tmp_path, monkeypatch):
+    from idr_intelligence.benchmark import run_benchmark
+
+    manifest = Path(__file__).resolve().parent.parent / "benchmarks/v1.json"
+    monkeypatch.chdir(tmp_path)
+    result = run_benchmark(manifest)
+    assert result["suite_version"] == "v1"
+    assert result["violations"] == []
+    assert result["passed"] is True
+
+
+def test_benchmark_detects_floor_violations(tmp_path, monkeypatch):
+    from idr_intelligence.benchmark import run_benchmark
+
+    manifest = json.loads((Path(__file__).resolve().parent.parent / "benchmarks/v1.json").read_text())
+    manifest["floors"]["variant_metrics"]["s6_gnn"]["roc_auc_min"] = 1.1
+    doctored = tmp_path / "impossible.json"
+    doctored.write_text(json.dumps(manifest))
+    monkeypatch.chdir(tmp_path)
+    result = run_benchmark(doctored)
+    assert result["passed"] is False
+    assert any("s6_gnn: roc_auc" in violation for violation in result["violations"])
+
+
+def test_drift_snapshot_flags_shifted_features(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    train_ablation(samples=20, epochs=1, seed=31)
+    model = load_campaign_model(tmp_path / "artifacts/hybrid_model.pt")
+    assert model.feature_stats is not None
+    in_distribution = score_events(simulate_campaign(1, 2000), model)
+    assert in_distribution.feature_drift is not None
+    assert "delta_seconds_log" not in in_distribution.feature_drift["flagged_features"]
+    shifted = score_events(simulate_campaign(1, 2000, scenario="low_and_slow"), model)
+    assert "delta_seconds_log" in shifted.feature_drift["flagged_features"]
+    assert shifted.feature_drift["psi_max"] > in_distribution.feature_drift["psi_max"]
+
+
+def test_drift_is_none_without_snapshot():
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    finding = score_events(simulate_campaign(1, 8), model)
+    assert finding.feature_drift is None
 
 
 def test_v0_easy_scenario_keeps_original_semantics():

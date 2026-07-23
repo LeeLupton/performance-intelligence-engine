@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .benchmark import run_benchmark
 from .models import load_campaign_model
 from .pipeline import score_events
 from .schema import IdrEvent
@@ -29,12 +30,20 @@ def main() -> None:
     score.add_argument("events")
     score.add_argument("--weights", default="artifacts/hybrid_model.pt")
 
+    bench = subparsers.add_parser("benchmark", help="run a frozen benchmark manifest; exit 1 on floor violations")
+    bench.add_argument("--manifest", default="benchmarks/v1.json")
+
     args = parser.parse_args()
     if args.command == "demo":
         report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate, scenario=args.scenario)
         model = load_campaign_model("artifacts/hybrid_model.pt")
         finding = score_events(simulate_campaign(1, 999), model, model_version="synthetic-demo-v0.1")
         print(json.dumps({"benchmark": report, "finding": finding.to_dict()}, indent=2))
+    elif args.command == "benchmark":
+        result = run_benchmark(args.manifest)
+        print(json.dumps({key: result[key] for key in ("suite_version", "passed", "violations")}, indent=2))
+        if not result["passed"]:
+            raise SystemExit(1)
     else:
         events = []
         for line_number, line in enumerate(Path(args.events).read_text().splitlines(), start=1):

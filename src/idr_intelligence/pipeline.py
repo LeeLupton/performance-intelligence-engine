@@ -12,7 +12,8 @@ from typing import Any
 
 from .attack import observed_attack_stages, predict_next_stage
 from .config import DEFAULT_CONFIG, ENGINE_VERSION
-from .graph import build_temporal_graph
+from .features import FEATURE_NAMES
+from .graph import TemporalGraph, build_temporal_graph
 from .models import CampaignModel
 from .registry import feature_schema_hash
 from .schema import IdrEvent
@@ -36,6 +37,7 @@ class IntelligenceFinding:
     engine_version: str
     feature_schema_hash: str
     scored_at: str
+    feature_drift: dict[str, Any] | None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -80,6 +82,34 @@ def score_events(
         engine_version=ENGINE_VERSION,
         feature_schema_hash=feature_schema_hash(),
         scored_at=datetime.now(timezone.utc).isoformat(),
+        feature_drift=_feature_drift(model, graph),
     )
+
+
+def _feature_drift(model: CampaignModel, graph: TemporalGraph, flag_threshold: float = 0.2) -> dict[str, Any] | None:
+    """Advisory PSI of scored event features against the training snapshot.
+
+    Returns None when the model carries no snapshot (hand-built or legacy
+    models). PSI >= 0.2 per feature is the conventional 'investigate' line.
+    """
+    stats = model.feature_stats
+    if not stats:
+        return None
+    rows = graph.sequences[graph.mask > 0]
+    edges = np.asarray(stats["bin_edges"])
+    psi_values = []
+    for index, train_counts in enumerate(stats["histograms"]):
+        observed_counts = np.histogram(rows[:, index], bins=edges)[0]
+        train_share = np.asarray(train_counts, dtype=np.float64) + 1e-4
+        observed_share = observed_counts.astype(np.float64) + 1e-4
+        train_share /= train_share.sum()
+        observed_share /= observed_share.sum()
+        psi_values.append(float(((observed_share - train_share) * np.log(observed_share / train_share)).sum()))
+    flagged = [FEATURE_NAMES[index] for index, value in enumerate(psi_values) if value >= flag_threshold]
+    return {
+        "psi_max": round(max(psi_values), 6),
+        "psi_mean": round(float(np.mean(psi_values)), 6),
+        "flagged_features": flagged,
+    }
 
 
