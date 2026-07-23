@@ -44,10 +44,13 @@ KIND_TO_ATTACK = {
 
 
 def observed_attack_stages(events: list[IdrEvent]) -> tuple[dict[str, Any], ...]:
-    """Timestamp-ordered, deduplicated (tactic, technique) observations with evidence.
+    """Timestamp-ordered attack-stage observations with evidence, one per kind.
 
-    Each mapped kind contributes at most one stage entry, anchored to the first
-    event that exhibited it.
+    Deduplication is by event kind, not by (tactic, technique): each mapped kind
+    contributes at most one stage entry, anchored to the first event that
+    exhibited it. Distinct kinds sharing a tactic/technique (e.g. ntp_time_shift
+    and rtc_clock_divergence both map to defense-evasion/T1562) therefore each
+    produce their own entry.
     """
     stages: dict[str, dict[str, Any]] = {}
     for event in sorted(events, key=lambda item: (item.timestamp, item.id)):

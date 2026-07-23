@@ -28,9 +28,9 @@
     ]
   },
   "outputs": [
-    "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability, predicted_next_stage (rule-based), related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations",
-    "Ablation benchmark report (training.py, reports/demo.json)",
-    "Checkpoint artifacts/hybrid_model.pt (dict: state_dict + feature_dim/hidden_dim/state_dim)"
+    "IntelligenceFinding JSON (pipeline.py): campaign_id, escalation_probability (affine-calibrated), raw_escalation_probability, calibration, predicted_next_stage (ATT&CK), observed_attack_stages, related_entities, evidence_event_ids, model_version, graph_nodes, graph_relations, engine_version, feature_schema_hash, scored_at, feature_drift",
+    "Ablation benchmark report (training.py, reports/demo.json) with per-scenario generalization and rolling-origin CV verdict",
+    "Checkpoint artifacts/hybrid_model.pt (dict: state_dict incl. temperature+cal_bias buffers, dims, use_s6/use_gnn/pooling, manifest, feature_stats)"
   ],
   "architecture": {
     "components": [
@@ -40,7 +40,7 @@
       },
       {
         "module": "src/idr_intelligence/features.py",
-        "role": "entity extraction, typed edges, 20-dim feature vector"
+        "role": "entity extraction (host/process/hash/ip/prefix/asn/domain/device + user/session/cloud identity), typed edges, 22-dim feature vector"
       },
       {
         "module": "src/idr_intelligence/graph.py",
@@ -52,7 +52,7 @@
       },
       {
         "module": "src/idr_intelligence/simulator.py",
-        "role": "8 scenario families: v0_easy, graded, distractor, legit_update, truncated, low_and_slow, split_host, hash_rotation; per-event scenario + stage_index ground truth"
+        "role": "9 scenario families incl. lateral_movement (identity-only pivot); per-event scenario + stage_index ground truth"
       },
       {
         "module": "src/idr_intelligence/training.py",
@@ -96,17 +96,17 @@
       {
         "name": "checkpoint",
         "version": "v4",
-        "contract": "v3 fields + manifest {engine_version, feature_schema_hash, config_hash, created_at, calibration}; loader raises SchemaMismatchError when the manifest's feature schema disagrees with the runtime; manifestless v2/v3 and raw v1 checkpoints still load; state_dict carries a temperature buffer (defaulted to 1.0 for older checkpoints) and the manifest records the calibration string; payload also carries feature_stats (per-feature training histograms) for drift checks"
+        "contract": "state_dict (incl. temperature + cal_bias buffers), feature_dim/hidden_dim/state_dim, use_s6/use_gnn/pooling, manifest (engine_version, feature_schema_hash, config_hash, created_at, calibration string), feature_stats; loader defaults missing temperature/cal_bias to identity and raises SchemaMismatchError on feature-schema drift; raw v1 state dicts still load"
       },
       {
         "name": "TemporalGraph",
         "version": "v1",
-        "contract": "node_ids, sequences [N,steps,20], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"
+        "contract": "node_ids, sequences [N,steps,22], mask, symmetric degree-normalized adjacency, evidence_ids per node, relation_counts"
       },
       {
         "name": "IntelligenceFinding",
         "version": "v5",
-        "contract": "v4 fields + feature_drift {psi_max, psi_mean, flagged_features} | null \u2014 advisory PSI of scored features vs the checkpoint's training snapshot"
+        "contract": "affine-calibrated escalation_probability + raw_escalation_probability + calibration string ('none' or 'affine:scale=..,bias=..'); observed_attack_stages; engine_version/feature_schema_hash/scored_at; feature_drift {psi_max,psi_mean,flagged_features}|null"
       },
       {
         "name": "LabeledWindow",
@@ -209,6 +209,16 @@
         "id": "ADR-19",
         "decision": "rolling_origin_ablation: expanding-window folds (40% minimum origin, 15% val/test blocks, folds<=3) x seed replicates; Brier is the decision metric (ranking saturates); best_model declared only when the paired margin exceeds the paired per-fold std, else 'tie'. First run confirms the roadmap's claim: 9-fold verdict is tie (margin 0.024 vs std 0.124) \u2014 single-split winners were noise",
         "where": "docs/ROADMAP.md W9"
+      },
+      {
+        "id": "ADR-20",
+        "decision": "Calibration is affine (scale + bias), not temperature-only: adversarial verification proved a pure scale cannot undo the constant log(pos_weight) shift that class-weighted training introduces, so calibrated probabilities were inflated under imbalance. affine_calibration_params fits both by LBFGS from identity, bounded to scale in [0.2,5] and bias in [-5,5] to prevent separable-data runaway, accepted only if validation NLL does not worsen. Single calibration_label() method shared by checkpoint and finding. cal_bias buffer added; older checkpoints default it to 0",
+        "where": "verification wk3kr3oza finding #1 (blocking)"
+      },
+      {
+        "id": "ADR-21",
+        "decision": "Identity entities: user: (global \u2014 the same actor links events across hosts, the load-bearing lateral-movement pivot), session:{host}:{sid}, cloud: nodes with authenticates_to/owns/spawns/accesses edges; has_user + has_identity_pivot features (FEATURE_DIM 20->22, schema hash rotates, checkpoints regenerate). lateral_movement scenario scatters all infrastructure so only the shared user connects the campaign; cross-host linkage is structural (global user node), not a per-event feature",
+        "where": "docs/ROADMAP.md W10 \u2014 closes Phase 2"
       }
     ]
   },
@@ -227,15 +237,16 @@
       "W6: graded + adversarial simulator scenarios with per-scenario generalization table",
       "W7: versioned benchmark suite (benchmarks/v1.json, runner, CI gate) + feature-snapshot drift on findings",
       "W8: LabeledWindow schema + dataio loader + --data training path",
-      "W9: rolling-origin CV + replicates with statistical best-model verdict (CLI: ablation)"
+      "W9: rolling-origin CV + replicates with statistical best-model verdict (CLI: ablation)",
+      "Verification fixes (wk3kr3oza, 12 upheld): affine calibration replacing broken temperature-only [BLOCKING], degenerate recall@FPR handling, Rust sketch + state.json contract sync [BLOCKING], attack docstring, and 5 vacuous/tautological tests rewritten to fail on real regressions [2 BLOCKING]",
+      "W10: identity entities (user/session/cloud) + edges + features + lateral_movement scenario \u2014 Phase 2 complete"
     ],
     "active": [
-      "W10: identity entities \u2014 user:/session:/cloud: nodes, authenticates_to/owns/spawns edges, has_user/cross_host_user features, lateral-movement scenario (closes Phase 2)"
+      "W11: per-entity time deltas feeding a time-aware S6 discretization (opens Phase 3)"
     ],
     "blocked": [
-      "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
-      "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
-      "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
+      "Phase 3: W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence + suppression",
+      "Phase 4: W15 streaming scorer, W16 campaign identity registry, W17 ONNX + Rust bridge"
     ]
   },
   "evidence": {
@@ -243,7 +254,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "55 passed"
+        "result": "63 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
@@ -251,13 +262,13 @@
         "result": "clean; 14 source files"
       },
       {
-        "cmd": "idr-intelligence ablation --samples 60 --epochs 2 --folds 3 --replicates 3",
+        "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "verdict: tie \u2014 gnn_only leads by 0.024 Brier vs paired std 0.124 over 9 folds; single-split winners confirmed noise"
+        "result": "suite v1 passed incl. new lateral_movement floor, 0 violations"
       }
     ],
     "tests": [
-      "tests: 55 \u2014 adds rolling-origin verdict structure + significance-consistency assertions, bad-folds rejection"
+      "tests: 63 \u2014 adds identity entity/edge extraction, has_user/has_identity_pivot features, lateral_movement links-only-via-user (1 shared actor across 6 hosts; benign has a distinct user per stage)"
     ],
     "benchmarks": [
       {
@@ -325,9 +336,9 @@
   "risks": {
     "defects": [],
     "assumptions": [
-      "Simulator class separability makes ranking metrics uninformative at n=80; only calibration (Brier) separates variants \u2014 W6 is the fix",
-      "predicted_next_stage is a 4-rule lookup presented alongside model output; W5 replaces it with an ATT&CK table, still deterministic",
-      "evidence_precision_at_5 uses multi-event entity membership as ground truth; valid for current simulator convergence design only"
+      "Simulator class separability makes ranking metrics uninformative at n<=80; only calibration (Brier/ECE) and cross-scenario Brier separate variants \u2014 W6 provides the harder families",
+      "predicted_next_stage / observed_attack_stages come from a deterministic ATT&CK table (attack.py), not the model \u2014 auditable by design",
+      "evidence_precision_at_5 uses multi-event entity membership as ground truth; valid for the current simulator convergence design only"
     ],
     "uncertainty": [
       "No real labeled campaigns yet (W8); production accuracy unknown",
@@ -359,11 +370,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:5db7cf1-plus-w1-slice",
+    "source_digest": "git:pending-w10",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W8 in PR #15; W9 rolling-origin CV implemented (first honest 'tie' verdict); W10 identity entities closes Phase 2 next"
+      "summary": "Calibration fix in PR #16; W10 identity entities implemented \u2014 Phase 2 complete (10/14 workstreams); Phase 3 opens with W11 per-entity time"
     }
   }
 }

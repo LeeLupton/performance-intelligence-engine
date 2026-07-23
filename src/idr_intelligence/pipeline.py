@@ -62,8 +62,7 @@ def score_events(
         raw_probability = torch.sigmoid(output.graph_logit)[0].item()
         probability = model.calibrated_probability(output.graph_logit)[0].item()
         node_probability = torch.sigmoid(output.node_logits)[0].cpu().numpy()
-    temperature = float(model.temperature.item())
-    calibration = "none" if temperature == 1.0 else f"temperature:{temperature:.6f}"
+    calibration = model.calibration_label()
     ranked = np.argsort(-node_probability)[: min(top_k, graph.node_count)]
     related = tuple(graph.node_ids[index] for index in ranked)
     evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in graph.evidence_ids[index]))

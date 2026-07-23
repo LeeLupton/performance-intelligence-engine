@@ -20,7 +20,9 @@ Model output is advisory. Every finding carries `evidence_event_ids` and should 
 ```rust
 EventKind::IntelligenceFinding {
     campaign_id: String,
-    escalation_probability: f32,
+    escalation_probability: f32,       // affine-calibrated; see `calibration`
+    raw_escalation_probability: f32,   // uncalibrated sigmoid
+    calibration: String,               // "none" or "affine:scale=..,bias=.."
     predicted_next_stage: String,
     related_entities: Vec<String>,
     evidence_event_ids: Vec<Uuid>,
@@ -32,9 +34,12 @@ EventKind::IntelligenceFinding {
 }
 ```
 
-`predicted_next_stage` and `observed_attack_stages` come from a deterministic
-kind→ATT&CK table (`attack.py`), never from the model — the field idr-sentinel
-corroborates stays auditable.
+`escalation_probability` is affine-calibrated (temperature scale plus bias, fit
+on held-out validation NLL); `raw_escalation_probability` is the uncalibrated
+sigmoid and `calibration` records the transform applied. `predicted_next_stage`
+and `observed_attack_stages` come from a deterministic kind→ATT&CK table
+(`attack.py`), never from the model — the field idr-sentinel corroborates stays
+auditable.
 
 `feature_schema_hash` identifies the exact feature semantics (names plus prior
 tables) the scoring model was trained under; `idr-sentinel` can deterministically
