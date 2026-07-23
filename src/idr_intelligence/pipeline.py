@@ -11,6 +11,7 @@ import torch
 from typing import Any
 
 from .attack import observed_attack_stages, predict_next_stage
+from .campaigns import CampaignRegistry
 from .config import DEFAULT_CONFIG, ENGINE_VERSION
 from .evidence import apply_suppressions, build_entity_evidence, occlusion_attribution
 from .features import FEATURE_NAMES
@@ -41,6 +42,8 @@ class IntelligenceFinding:
     feature_schema_hash: str
     scored_at: str
     feature_drift: dict[str, Any] | None
+    continues_campaign: bool = False
+    windows_observed: int = 1
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -53,11 +56,16 @@ def score_events(
     max_steps: int = DEFAULT_CONFIG.graph.score_max_steps,
     top_k: int = DEFAULT_CONFIG.scoring.top_k,
     suppressions: list[str] | None = None,
+    registry: CampaignRegistry | None = None,
 ) -> IntelligenceFinding:
     """Score one event set and return a finding with ranked entities and evidence.
 
     suppressions (per-deployment allowlist) attenuate matching entities out of
     the ranking without hiding the finding or touching the campaign probability.
+    registry, when provided, resolves a stable campaign identity across scoring
+    windows by durable-entity fingerprint matching (the registry is mutated:
+    matched campaigns are extended, unmatched ones registered). Without it the
+    campaign id is derived from the window's first event, unique per call.
     """
     graph = build_temporal_graph(events, max_steps=max_steps, time_mode=model.time_mode, decay_half_life=model.decay_half_life)
     first = min(events, key=lambda event: (event.timestamp, event.id))
@@ -80,8 +88,13 @@ def score_events(
     evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in graph.evidence_ids[index]))
     attribution = occlusion_attribution(model, sequence, mask, adjacency, deltas, node_logits)
     entity_evidence = tuple(record.to_dict() for record in build_entity_evidence(graph, events, node_probability, ranked, attribution))
+    scored_at = datetime.now(timezone.utc).isoformat()
+    if registry is not None:
+        campaign_id, continues_campaign, windows_observed = registry.match_or_register(graph.node_ids, scored_at)
+    else:
+        campaign_id, continues_campaign, windows_observed = f"idr-campaign-{first.id[:8]}", False, 1
     return IntelligenceFinding(
-        campaign_id=f"idr-campaign-{first.id[:8]}",
+        campaign_id=campaign_id,
         escalation_probability=round(probability, 6),
         raw_escalation_probability=round(raw_probability, 6),
         calibration=calibration,
@@ -96,8 +109,10 @@ def score_events(
         graph_relations=graph.relation_counts,
         engine_version=ENGINE_VERSION,
         feature_schema_hash=feature_schema_hash(),
-        scored_at=datetime.now(timezone.utc).isoformat(),
+        scored_at=scored_at,
         feature_drift=_feature_drift(model, graph),
+        continues_campaign=continues_campaign,
+        windows_observed=windows_observed,
     )
 
 

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from .benchmark import run_benchmark
+from .campaigns import CampaignRegistry
 from .models import load_campaign_model
 from .pipeline import score_events
 from .schema import IdrEvent
@@ -31,6 +32,7 @@ def main() -> None:
     score.add_argument("events")
     score.add_argument("--weights", default="artifacts/hybrid_model.pt")
     score.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
+    score.add_argument("--registry", default=None, help="campaign registry JSON path; matched and updated so campaign ids stay stable across windows")
 
     bench = subparsers.add_parser("benchmark", help="run a frozen benchmark manifest; exit 1 on floor violations")
     bench.add_argument("--manifest", default="benchmarks/v1.json")
@@ -84,7 +86,10 @@ def main() -> None:
             except Exception as exc:
                 raise SystemExit(f"invalid event at line {line_number}: {exc}") from exc
         model = load_campaign_model(args.weights)
-        finding = score_events(events, model, model_version=Path(args.weights).name, suppressions=args.suppress)
+        registry = CampaignRegistry.load(args.registry) if args.registry else None
+        finding = score_events(events, model, model_version=Path(args.weights).name, suppressions=args.suppress, registry=registry)
+        if registry is not None:
+            registry.save(args.registry)
         print(json.dumps(finding.to_dict(), indent=2))
 
 
