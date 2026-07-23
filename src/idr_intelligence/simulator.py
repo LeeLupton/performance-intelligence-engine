@@ -33,6 +33,8 @@ SCENARIOS = (
     "split_host",
     "hash_rotation",
     "lateral_movement",
+    "stale_preamble",
+    "timing_only",
 )
 
 
@@ -122,6 +124,21 @@ def simulate_campaign(
         hosts = list(scatter_hosts)
         ips = list(scatter_ips)
         hashes = [campaign_hash, f"cafebabe{seed:056x}"[-64:]]
+    elif scenario == "timing_only":
+        # Identical benign content and converged structure for BOTH classes — the
+        # ONLY discriminator is inter-event timing. Removes the graph-structure
+        # crutch that saturates every other scenario, so temporal physics is the
+        # sole path to separation. Malicious = tight burst; benign = routine
+        # multi-hour cadence over the same entities.
+        hosts = [primary_host] * 6
+        ips = [suspicious_ip] * 5
+        hashes = [campaign_hash] * 2
+        pids = [process_id] * 2
+        signed = True
+        exfil = False
+        hijack = False
+        time_offset_seconds = 0.4
+        times = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0] if label else [0.0, 480.0, 960.0, 1440.0, 1920.0, 2400.0]
 
     add(times[0], "kernel_ebpf", "HIGH", {
         "type": "socket_lineage", "pid": pids[0], "tgid": pids[0],
@@ -176,6 +193,22 @@ def simulate_campaign(
         for event in events:
             event.kind["user"] = shared_user if label else f"local-user-{event.metadata['stage_index']}"
             event.kind["target_host"] = event.metadata["host"]
+
+    if scenario == "stale_preamble":
+        # Both classes carry an IDENTICAL benign preamble ~2 days before the
+        # recent window (routine signed connections on the primary host). The
+        # discriminating signal lives only in the recent burst, so the stale
+        # preamble is pure noise that edge decay should suppress and per-entity
+        # time should recognize as old — the case W11/W12 were built for.
+        benign_hash = f"5afe0000{seed:056x}"[-64:]
+        for pre_index in range(4):
+            add(-2880.0 - pre_index * 180, "kernel_ebpf", "INFO", {
+                "type": "socket_lineage", "pid": process_id - 500 - pre_index,
+                "tgid": process_id - 500 - pre_index,
+                "exe_path": "/usr/bin/routine", "exe_sha256": benign_hash,
+                "dst_ip": f"198.51.100.{(seed + pre_index * 7) % 90 + 1}", "dst_port": 443,
+                "is_signed": True,
+            }, primary_host, 10 + pre_index)
 
     if scenario == "truncated":
         stage_reached = 2 + seed % 5

@@ -400,6 +400,28 @@ def test_occlusion_attribution_shape():
     assert attribution.shape == (graph.node_count, FEATURE_DIM)
 
 
+def test_stale_preamble_adds_old_benign_events():
+    campaign = simulate_campaign(1, 7, scenario="v0_easy")
+    preambled = simulate_campaign(1, 7, scenario="stale_preamble")
+    # The preamble prepends benign events well before the recent window.
+    assert len(preambled) == len(campaign) + 4
+    span = (preambled[-1].timestamp - preambled[0].timestamp).total_seconds()
+    assert span > 24 * 3600  # spans more than a day (stale preamble to recent burst)
+
+
+def test_timing_only_isolates_timing():
+    mal = simulate_campaign(1, 7, scenario="timing_only")
+    ben = simulate_campaign(0, 7, scenario="timing_only")
+    # Identical content and structure: same kinds, same hosts, same signed flag.
+    assert [e.kind_type for e in mal] == [e.kind_type for e in ben]
+    assert {e.metadata["host"] for e in mal} == {e.metadata["host"] for e in ben} == {"workstation-07"}
+    assert all(e.kind.get("is_signed") is not False for e in mal + ben)
+    # Only the timing differs: malicious is a tight burst, benign is spread out.
+    mal_span = (mal[-1].timestamp - mal[0].timestamp).total_seconds()
+    ben_span = (ben[-1].timestamp - ben[0].timestamp).total_seconds()
+    assert mal_span < 3600 < ben_span
+
+
 def test_typed_edges_retained():
     from idr_intelligence.graph import build_temporal_graph
 
