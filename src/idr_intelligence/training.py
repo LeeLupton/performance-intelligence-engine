@@ -70,6 +70,38 @@ def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONF
     return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
 
 
+def windows_to_batch(windows: list, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps) -> Batch:
+    """Pad chronologically-sorted labeled windows into one Batch, zero model changes."""
+    samples = len(windows)
+    sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
+    mask = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
+    adjacency = np.zeros((samples, max_nodes, max_nodes), dtype=np.float32)
+    labels = []
+    for index, window in enumerate(windows):
+        graph = build_temporal_graph(list(window.events), max_steps=max_steps)
+        count = min(graph.node_count, max_nodes)
+        sequences[index, :count] = graph.sequences[:count]
+        mask[index, :count] = graph.mask[:count]
+        adjacency[index, :count, :count] = graph.adjacency[:count, :count]
+        if count < max_nodes:
+            adjacency[index, count:, count:] = np.eye(max_nodes - count, dtype=np.float32)
+        labels.append(float(window.label))
+    return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
+
+
+def _require_two_class_segments(labels: torch.Tensor) -> None:
+    """Real data cannot be redrawn: fail loudly when a split segment is single-class."""
+    size = len(labels)
+    train_end, validation_end = int(size * 0.60), int(size * 0.80)
+    for name, start, end in (("train", 0, train_end), ("validation", train_end, validation_end), ("test", validation_end, size)):
+        segment = labels[start:end]
+        if segment.sum() == 0 or segment.sum() == len(segment):
+            raise ValueError(
+                f"chronological {name} segment is single-class ({int(segment.sum())}/{len(segment)} malicious); "
+                "supply more windows or a wider time range"
+            )
+
+
 def _draw_labels(samples: int, seed: int, malicious_rate: float) -> np.ndarray:
     """Seeded label draw, deterministically retried until every split segment has both classes."""
     train_end, validation_end = int(samples * 0.60), int(samples * 0.80)
@@ -89,20 +121,29 @@ def chronological_split(batch: Batch) -> tuple[Batch, Batch, Batch]:
     return _slice(batch, 0, train_end), _slice(batch, train_end, validation_end), _slice(batch, validation_end, size)
 
 
-def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None, malicious_rate: float = 0.5, scenario: str = "v0_easy") -> dict:
-    """Train every ablation variant under one split, save the hybrid, return the report."""
+def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None, malicious_rate: float = 0.5, scenario: str = "v0_easy", data: str | None = None) -> dict:
+    """Train every ablation variant under one split, save the hybrid, return the report.
+
+    With `data`, labeled real windows (*.labeled.ndjson) replace the simulator;
+    windows are ordered by start time so the chronological split stays honest.
+    """
     set_seed(seed)
-    train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed, malicious_rate=malicious_rate, scenario=scenario))
-    variants: dict[str, dict[str, Any]] = {
-        "static_baseline": {"use_s6": False, "use_gnn": False},
-        "s6_only": {"use_s6": True, "use_gnn": False},
-        "gnn_only": {"use_s6": False, "use_gnn": True},
-        "s6_gnn": {"use_s6": True, "use_gnn": True},
-        "s6_gnn_uniform_pool": {"use_s6": True, "use_gnn": True, "pooling": "uniform"},
-    }
+    if data is not None:
+        from .dataio import load_labeled_windows
+
+        windows = load_labeled_windows(data)
+        batch = windows_to_batch(windows)
+        _require_two_class_segments(batch.labels)
+        source = str(data)
+        observed_rate = float(batch.labels.mean().item())
+    else:
+        batch = make_dataset(samples=samples, seed=seed, malicious_rate=malicious_rate, scenario=scenario)
+        source = "simulator"
+        observed_rate = malicious_rate
+    train, validation, test = chronological_split(batch)
     evidence_seeds = [seed + samples + offset for offset in range(8)]
     results, trained, evidence_precision = {}, {}, {}
-    for name, kwargs in variants.items():
+    for name, kwargs in VARIANTS.items():
         model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, **kwargs)
         _fit(model, train, validation, epochs)
         trained[name] = model
@@ -110,8 +151,9 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
         evidence_precision[name] = evidence_precision_at_5(model, evidence_seeds)
     report = {
         "problem": "predict campaign escalation from ordered IdrEvent histories and entity relationships",
-        "malicious_rate": malicious_rate,
-        "scenario": scenario,
+        "data_source": source,
+        "malicious_rate": observed_rate,
+        "scenario": scenario if data is None else "real_data",
         "split": {"train": len(train.labels), "validation": len(validation.labels), "test": len(test.labels)},
         "metrics": results,
         "evidence_precision_at_5": evidence_precision,
@@ -211,6 +253,84 @@ def scenario_generalization(model: CampaignModel, seed: int, samples: int = 20) 
         metrics = _evaluate(model, batch)
         rows[scenario] = {key: metrics[key] for key in ("roc_auc", "brier", "recall_at_fpr_1pct")}
     return rows
+
+
+VARIANTS: dict[str, dict[str, Any]] = {
+    "static_baseline": {"use_s6": False, "use_gnn": False},
+    "s6_only": {"use_s6": True, "use_gnn": False},
+    "gnn_only": {"use_s6": False, "use_gnn": True},
+    "s6_gnn": {"use_s6": True, "use_gnn": True},
+    "s6_gnn_uniform_pool": {"use_s6": True, "use_gnn": True, "pooling": "uniform"},
+}
+
+
+def rolling_origin_ablation(
+    samples: int = 60,
+    epochs: int = 2,
+    seed: int = 7,
+    folds: int = 3,
+    replicates: int = 3,
+    malicious_rate: float = 0.5,
+    scenario: str = "v0_easy",
+) -> dict:
+    """Expanding-window temporal CV with seed replicates over every variant.
+
+    Decision metric is Brier (ranking saturates on synthetic data). best_model
+    is declared only when the winner beats the runner-up by more than the
+    paired per-fold std of their differences; otherwise the verdict is "tie" —
+    with 16 test samples and one seed, a single-split winner is noise.
+    """
+    if folds not in (2, 3):
+        raise ValueError("folds must be 2 or 3 (expanding windows of 15% with a 40% minimum origin)")
+    fold_offsets = list(range(3 - folds, 3))
+    scores: dict[str, list[float]] = {name: [] for name in VARIANTS}
+    pr_scores: dict[str, list[float]] = {name: [] for name in VARIANTS}
+    for replicate in range(replicates):
+        replicate_seed = seed + replicate * 10_000
+        set_seed(replicate_seed)
+        batch = make_dataset(samples=samples, seed=replicate_seed, malicious_rate=malicious_rate, scenario=scenario)
+        size = len(batch.labels)
+        for offset in fold_offsets:
+            train_end = int(size * (0.40 + offset * 0.15))
+            validation_end = int(size * (0.55 + offset * 0.15))
+            test_end = int(size * (0.70 + offset * 0.15))
+            train = _slice(batch, 0, train_end)
+            validation = _slice(batch, train_end, validation_end)
+            test = _slice(batch, validation_end, test_end)
+            if any(part.labels.sum() in (0, len(part.labels)) for part in (train, validation, test)):
+                continue
+            for name, kwargs in VARIANTS.items():
+                model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, **kwargs)
+                _fit(model, train, validation, epochs)
+                metrics = _evaluate(model, test)
+                scores[name].append(metrics["brier"])
+                pr_scores[name].append(metrics["pr_auc"])
+    if not next(iter(scores.values())):
+        raise ValueError("every fold was single-class; increase samples or folds")
+    per_variant = {
+        name: {
+            "mean_brier": round(float(np.mean(values)), 6),
+            "std_brier": round(float(np.std(values, ddof=1)) if len(values) > 1 else 0.0, 6),
+            "mean_pr_auc": round(float(np.mean(pr_scores[name])), 6),
+            "folds_evaluated": len(values),
+        }
+        for name, values in scores.items()
+    }
+    ordered = sorted(per_variant, key=lambda name: per_variant[name]["mean_brier"])
+    best, runner_up = ordered[0], ordered[1]
+    paired = np.asarray(scores[runner_up]) - np.asarray(scores[best])
+    margin = round(float(paired.mean()), 6)
+    paired_std = round(float(paired.std(ddof=1)) if len(paired) > 1 else 0.0, 6)
+    significant = margin > paired_std
+    return {
+        "metric": "brier",
+        "folds": folds,
+        "replicates": replicates,
+        "per_variant": per_variant,
+        "best_model": best if significant else "tie",
+        "decision": {"winner": best, "runner_up": runner_up, "margin": margin, "paired_std": paired_std, "significant": significant},
+        "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
+    }
 
 
 def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) -> float:

@@ -196,6 +196,97 @@ def test_finding_carries_provenance():
     assert len(finding.related_entities) <= DEFAULT_CONFIG.scoring.top_k
 
 
+def _window_line(window_id, label, seed):
+    events = []
+    for event in simulate_campaign(label, seed):
+        events.append({
+            "id": event.id, "timestamp": event.timestamp.isoformat(), "source": event.source,
+            "severity": event.severity, "kind": event.kind, "metadata": event.metadata,
+        })
+    return json.dumps({"window_id": window_id, "label": label, "events": events})
+
+
+def test_labeled_window_validation():
+    from idr_intelligence.schema import LabeledWindow
+
+    with pytest.raises(ValueError, match="missing LabeledWindow fields"):
+        LabeledWindow.from_dict({"window_id": "w1", "label": 1})
+    with pytest.raises(ValueError, match="label"):
+        LabeledWindow.from_dict({"window_id": "w1", "label": 2, "events": [{}]})
+    with pytest.raises(ValueError, match="non-empty"):
+        LabeledWindow.from_dict({"window_id": "w1", "label": 1, "events": []})
+    window = LabeledWindow.from_dict(json.loads(_window_line("w1", 1, 5)))
+    assert window.label == 1
+    assert len(window.events) == 6
+    assert window.start == window.events[0].timestamp
+
+
+def test_labeled_window_loader_and_errors(tmp_path):
+    from idr_intelligence.dataio import load_labeled_windows
+
+    (tmp_path / "a.labeled.ndjson").write_text(_window_line("w1", 1, 4) + "\n" + _window_line("w0", 0, 3) + "\n")
+    (tmp_path / "b.labeled.ndjson").write_text(_window_line("w2", 0, 8) + "\n")
+    windows = load_labeled_windows(tmp_path)
+    assert [window.window_id for window in windows] == ["w0", "w1", "w2"]
+    starts = [window.start for window in windows]
+    assert starts == sorted(starts)
+    (tmp_path / "c.labeled.ndjson").write_text('{"window_id": "bad"}\n')
+    with pytest.raises(ValueError, match=r"c\.labeled\.ndjson:1"):
+        load_labeled_windows(tmp_path)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(ValueError, match="no \\*\\.labeled\\.ndjson"):
+        load_labeled_windows(empty)
+    with pytest.raises(ValueError, match="no such file or directory"):
+        load_labeled_windows(tmp_path / "missing")
+
+
+def test_train_ablation_on_labeled_data(tmp_path, monkeypatch):
+    lines = [_window_line(f"w{index}", index % 2, 100 + index) for index in range(24)]
+    data_dir = tmp_path / "windows"
+    data_dir.mkdir()
+    (data_dir / "export.labeled.ndjson").write_text("\n".join(lines) + "\n")
+    monkeypatch.chdir(tmp_path)
+    report = train_ablation(epochs=1, data=str(data_dir))
+    assert report["data_source"] == str(data_dir)
+    assert report["scenario"] == "real_data"
+    assert report["malicious_rate"] == 0.5
+    assert report["split"] == {"train": 14, "validation": 5, "test": 5}
+    assert load_campaign_model(tmp_path / "artifacts/hybrid_model.pt") is not None
+
+
+def test_single_class_segment_fails_loudly(tmp_path, monkeypatch):
+    lines = [_window_line(f"w{index}", 1, 100 + index) for index in range(24)]
+    data_dir = tmp_path / "windows"
+    data_dir.mkdir()
+    (data_dir / "export.labeled.ndjson").write_text("\n".join(lines) + "\n")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="single-class"):
+        train_ablation(epochs=1, data=str(data_dir))
+
+
+def test_rolling_origin_ablation_reports_statistical_verdict():
+    from idr_intelligence.training import VARIANTS, rolling_origin_ablation
+
+    report = rolling_origin_ablation(samples=30, epochs=1, seed=17, folds=2, replicates=2)
+    assert set(report["per_variant"]) == set(VARIANTS)
+    for row in report["per_variant"].values():
+        assert row["folds_evaluated"] >= 1
+        assert row["std_brier"] >= 0.0
+    decision = report["decision"]
+    assert decision["winner"] != decision["runner_up"]
+    assert decision["significant"] == (decision["margin"] > decision["paired_std"])
+    expected = decision["winner"] if decision["significant"] else "tie"
+    assert report["best_model"] == expected
+
+
+def test_rolling_origin_rejects_bad_folds():
+    from idr_intelligence.training import rolling_origin_ablation
+
+    with pytest.raises(ValueError, match="folds"):
+        rolling_origin_ablation(samples=30, epochs=1, folds=5)
+
+
 def test_benchmark_suite_passes_current_floors(tmp_path, monkeypatch):
     from idr_intelligence.benchmark import run_benchmark
 
