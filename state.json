@@ -97,6 +97,10 @@
       {
         "module": "src/idr_intelligence/campaigns.py",
         "role": "cross-window campaign identity: durable-entity fingerprints, weighted-Jaccard matcher, content-addressed IDs, JSON-persisted CampaignRegistry"
+      },
+      {
+        "module": "src/idr_intelligence/streaming.py",
+        "role": "one-event-at-a-time scoring: EntityState carried S6 (state,output) via step(), bounded by GraphBudget with audited eviction; relational head re-run at query time"
       }
     ],
     "interfaces": [
@@ -271,6 +275,11 @@
         "id": "ADR-28",
         "decision": "W16 campaign identity is deterministic set-matching, not a model: durable-entity fingerprints (weighted by continuity strength — hash/domain/user outweigh host; ephemeral process:/session: excluded) matched by weighted Jaccard at 0.5. A match continues the campaign (fingerprint unioned so identity follows infrastructure as it grows), a miss registers a blake2s content-addressed id (order-independent, reproducible). The registry is opt-in (score_events(registry=...), CLI --registry PATH load->match->save); without it findings behave exactly as before. Sentinel id for windows with no durable entities. Auditable by construction — idr-sentinel can recompute every match decision from the finding + registry JSON",
         "where": "docs/ROADMAP.md W16"
+      },
+      {
+        "id": "ADR-29",
+        "decision": "W15 streaming scorer: per-entity S6 (state,output) carried forward with the W13 step() cell — O(1) work and state per (event,entity), no history replay — while the GNN+pooling+heads run at query time via CampaignModel.relational_head(), extracted from forward() as pure code motion (benchmark floors confirm bit-identical). Adjacency/decay/drift/stages accumulate incrementally against factored shared helpers (graph.degree_normalize, pipeline.psi_drift, attack.next_stage_from_stages) so batch and streaming share one code path everywhere. Numerical-equivalence tests pin streaming==batch findings across all three time modes, decayed edges, and PSI drift. HONEST SCOPE: events must arrive chronologically (out-of-order raises; an upstream replay/sort buffer owns reordering — the W12-deferred replay-wrapper is that buffer, still deferred until a real consumer exists); entity_evidence is empty in streaming findings because occlusion attribution requires exactly the history replay streaming exists to avoid; incremental LRU eviction under a budget can differ from one-shot batch eviction (inherent — the stream cannot know the future); torch.sparse.mm still deferred — relational head cost is O(N^2 * hidden) per query at bounded N, dense bmm remains cheaper at these sizes",
+        "where": "docs/ROADMAP.md W15"
       }
     ]
   },
@@ -299,13 +308,12 @@
       "Flip default time_mode time_aware->global (evidence-driven, ADR-26); benchmark floors green; default locked by test",
       "v0.1 consolidation: README refreshed to match the shipped engine (capabilities, all CLI subcommands, full repo map, honest temporal-physics note, updated resume bullet)",
       "W13: S6 step() cell (shared _recurrence, streaming step(), lossless snapshot/restore, numerical equivalence to forward) \u2014 enables W15/W17",
-      "W16: campaign-identity registry (campaigns.py; weighted durable-entity fingerprint matching, content-addressed IDs, opt-in via score_events(registry=)/CLI --registry; finding v7 adds continues_campaign + windows_observed)"
+      "W16: campaign-identity registry (campaigns.py; weighted durable-entity fingerprint matching, content-addressed IDs, opt-in via score_events(registry=)/CLI --registry; finding v7 adds continues_campaign + windows_observed)",
+      "W15: streaming scorer (streaming.py: StreamingScorer over W13 step() + bounded_graph, CLI stream subcommand; equivalence to batch pinned across time modes/decay/drift)"
     ],
-    "active": [
-      "W15 streaming scorer (streaming.py: EntityState + StreamingScorer over W13 step() + bounded_graph; sparse adjacency + replay-wrapper deferred from W12 land here)"
-    ],
+    "active": [],
     "blocked": [
-      "W17 ONNX export + Rust bridge (uses W13 step(); NEEDS user machine \u2014 Rust toolchain + idr-main)"
+      "W17 ONNX export + Rust bridge (uses W13 step(); NEEDS user machine \u2014 Rust toolchain + idr-main). ALL other workstreams complete \u2014 this is the only remaining item"
     ]
   },
   "evidence": {
@@ -313,21 +321,21 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "91 passed"
+        "result": "99 passed"
       },
       {
         "cmd": "ruff check src tests && python -m mypy src",
         "when": "2026-07-23",
-        "result": "clean; 17 source files"
+        "result": "clean; 18 source files"
       },
       {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "passed, 0 violations (registry is opt-in; scoring path unchanged without it)"
+        "result": "passed, 0 violations (relational_head extraction is pure code motion; forward bit-identical)"
       }
     ],
     "tests": [
-      "tests: 91 \u2014 adds W16 coverage: durable-vs-ephemeral fingerprinting, host-only insufficient / infrastructure sufficient matching, order-independent content addressing, cross-window continuity + new-campaign registration + sentinel, persistence round-trip, score_events registry stability, CLI --registry across invocations"
+      "tests: 99 \u2014 adds W15 coverage: streaming==batch finding equivalence across global/per_entity/time_aware, decayed-edge equivalence, PSI-drift equivalence, out-of-order rejection, S6-required guard, budget eviction with audit, registry continuity across streaming windows, CLI stream round-trip with --max-nodes"
     ],
     "benchmarks": [
       {
@@ -429,11 +437,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:8718616-plus-w16",
+    "source_digest": "git:627db0f-plus-w15",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W16 campaign-identity registry shipped: stable cross-window campaign IDs by weighted durable-entity fingerprint matching; finding v7 adds continues_campaign/windows_observed. W15 streaming next; W17 Rust bridge will need the user's machine"
+      "summary": "W15 streaming scorer shipped: carried per-entity S6 state via step(), bounded memory with audited eviction, findings equivalent to batch (pinned by test) across time modes/decay/drift. 16/17 workstreams done — only W17 (ONNX + Rust bridge) remains and it NEEDS the user's machine"
     }
   }
 }

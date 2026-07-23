@@ -20,6 +20,13 @@ def _normalize_delta(seconds: float) -> float:
     return float(np.log1p(max(seconds, 0.0)) / 12.0)
 
 
+def degree_normalize(adjacency: np.ndarray) -> np.ndarray:
+    """Symmetric D^-1/2 A D^-1/2 normalization — shared by batch and streaming paths."""
+    degrees = adjacency.sum(axis=1)
+    inv_sqrt = np.power(np.maximum(degrees, 1.0), -0.5)
+    return inv_sqrt[:, None] * adjacency * inv_sqrt[None, :]
+
+
 @dataclass(frozen=True)
 class TemporalGraph:
     """Entity nodes with ordered feature histories, per-entity time deltas, adjacency, evidence."""
@@ -138,9 +145,7 @@ def build_temporal_graph(
             mask[idx, start:] = 1.0
             deltas[idx, start:] = np.asarray(clipped_deltas, dtype=np.float32)
 
-    degrees = adjacency.sum(axis=1)
-    inv_sqrt = np.power(np.maximum(degrees, 1.0), -0.5)
-    adjacency = inv_sqrt[:, None] * adjacency * inv_sqrt[None, :]
+    adjacency = degree_normalize(adjacency)
     return TemporalGraph(
         node_ids=node_ids,
         sequences=sequences,

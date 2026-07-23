@@ -34,6 +34,13 @@ def main() -> None:
     score.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
     score.add_argument("--registry", default=None, help="campaign registry JSON path; matched and updated so campaign ids stay stable across windows")
 
+    stream = subparsers.add_parser("stream", help="score newline-delimited IdrEvent JSON one event at a time over carried S6 state")
+    stream.add_argument("events")
+    stream.add_argument("--weights", default="artifacts/hybrid_model.pt")
+    stream.add_argument("--max-nodes", type=int, default=None, help="entity budget; least-recently-seen entities are evicted with an audit trail")
+    stream.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
+    stream.add_argument("--registry", default=None, help="campaign registry JSON path; matched and updated so campaign ids stay stable across windows")
+
     bench = subparsers.add_parser("benchmark", help="run a frozen benchmark manifest; exit 1 on floor violations")
     bench.add_argument("--manifest", default="benchmarks/v1.json")
 
@@ -76,21 +83,46 @@ def main() -> None:
         print(json.dumps(time_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
     elif args.command == "decay-ablation":
         print(json.dumps(decay_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
+    elif args.command == "stream":
+        from .bounded_graph import GraphBudget
+        from .streaming import StreamingScorer
+
+        model = load_campaign_model(args.weights)
+        budget = GraphBudget(max_nodes=args.max_nodes) if args.max_nodes else None
+        scorer = StreamingScorer(model, budget=budget, model_version=Path(args.weights).name)
+        for event in sorted(_read_events(args.events), key=lambda item: (item.timestamp, item.id)):
+            scorer.ingest(event)
+        registry = CampaignRegistry.load(args.registry) if args.registry else None
+        finding = scorer.finding(suppressions=args.suppress, registry=registry)
+        if registry is not None:
+            registry.save(args.registry)
+        payload = finding.to_dict()
+        payload["evictions"] = [
+            {"entity": record.entity, "last_seen": record.last_seen.isoformat(), "reason": record.reason}
+            for record in scorer.evictions
+        ]
+        print(json.dumps(payload, indent=2))
     else:
-        events = []
-        for line_number, line in enumerate(Path(args.events).read_text().splitlines(), start=1):
-            if not line.strip():
-                continue
-            try:
-                events.append(IdrEvent.from_dict(json.loads(line)))
-            except Exception as exc:
-                raise SystemExit(f"invalid event at line {line_number}: {exc}") from exc
+        events = _read_events(args.events)
         model = load_campaign_model(args.weights)
         registry = CampaignRegistry.load(args.registry) if args.registry else None
         finding = score_events(events, model, model_version=Path(args.weights).name, suppressions=args.suppress, registry=registry)
         if registry is not None:
             registry.save(args.registry)
         print(json.dumps(finding.to_dict(), indent=2))
+
+
+def _read_events(path: str) -> list[IdrEvent]:
+    """Parse newline-delimited IdrEvent JSON, naming the offending line on failure."""
+    events = []
+    for line_number, line in enumerate(Path(path).read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            events.append(IdrEvent.from_dict(json.loads(line)))
+        except Exception as exc:
+            raise SystemExit(f"invalid event at line {line_number}: {exc}") from exc
+    return events
 
 
 if __name__ == "__main__":

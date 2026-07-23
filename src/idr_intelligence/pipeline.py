@@ -116,22 +116,18 @@ def score_events(
     )
 
 
-def _feature_drift(model: CampaignModel, graph: TemporalGraph, flag_threshold: float = 0.2) -> dict[str, Any] | None:
-    """Advisory PSI of scored event features against the training snapshot.
+def psi_drift(stats: dict[str, Any], observed_counts: np.ndarray, flag_threshold: float = 0.2) -> dict[str, Any]:
+    """PSI of per-feature observed histogram counts against a training snapshot.
 
-    Returns None when the model carries no snapshot (hand-built or legacy
-    models). PSI >= 0.2 per feature is the conventional 'investigate' line.
+    observed_counts is [features, bins], binned on stats["bin_edges"]. Shared by
+    batch scoring (which histograms the window's rows) and the streaming scorer
+    (which accumulates counts one event at a time). PSI >= 0.2 per feature is
+    the conventional 'investigate' line.
     """
-    stats = model.feature_stats
-    if not stats:
-        return None
-    rows = graph.sequences[graph.mask > 0]
-    edges = np.asarray(stats["bin_edges"])
     psi_values = []
     for index, train_counts in enumerate(stats["histograms"]):
-        observed_counts = np.histogram(rows[:, index], bins=edges)[0]
         train_share = np.asarray(train_counts, dtype=np.float64) + 1e-4
-        observed_share = observed_counts.astype(np.float64) + 1e-4
+        observed_share = observed_counts[index].astype(np.float64) + 1e-4
         train_share /= train_share.sum()
         observed_share /= observed_share.sum()
         psi_values.append(float(((observed_share - train_share) * np.log(observed_share / train_share)).sum()))
@@ -141,5 +137,19 @@ def _feature_drift(model: CampaignModel, graph: TemporalGraph, flag_threshold: f
         "psi_mean": round(float(np.mean(psi_values)), 6),
         "flagged_features": flagged,
     }
+
+
+def _feature_drift(model: CampaignModel, graph: TemporalGraph) -> dict[str, Any] | None:
+    """Advisory PSI of scored event features against the training snapshot.
+
+    Returns None when the model carries no snapshot (hand-built or legacy models).
+    """
+    stats = model.feature_stats
+    if not stats:
+        return None
+    rows = graph.sequences[graph.mask > 0]
+    edges = np.asarray(stats["bin_edges"])
+    observed = np.stack([np.histogram(rows[:, index], bins=edges)[0] for index in range(rows.shape[1])])
+    return psi_drift(stats, observed)
 
 
