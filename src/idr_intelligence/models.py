@@ -1,6 +1,9 @@
+"""Temporal and relational encoders for campaign inference."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import torch
 from torch import nn
@@ -43,6 +46,8 @@ class SelectiveSSM(nn.Module):
 
 
 class ResidualGraphLayer(nn.Module):
+    """One round of degree-normalized message passing with a residual update."""
+
     def __init__(self, hidden_dim: int) -> None:
         super().__init__()
         self.self_linear = nn.Linear(hidden_dim, hidden_dim)
@@ -57,18 +62,35 @@ class ResidualGraphLayer(nn.Module):
 
 @dataclass(frozen=True)
 class ModelOutput:
+    """Graph-level campaign logit plus per-node relevance logits."""
+
     graph_logit: torch.Tensor
     node_logits: torch.Tensor
 
 
+def _masked_max(values: torch.Tensor, keep: torch.Tensor, dim: int) -> torch.Tensor:
+    """Max over `dim` ignoring masked entries; rows with nothing kept become zeros."""
+    maximum = values.masked_fill(keep == 0, float("-inf")).max(dim=dim).values
+    return torch.where(torch.isfinite(maximum), maximum, torch.zeros_like(maximum))
+
+
 class CampaignModel(nn.Module):
+    """Ablatable S6 + GNN campaign classifier; either encoder can be disabled."""
+
     def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True) -> None:
         super().__init__()
+        self.feature_dim = feature_dim
+        self.hidden_dim = hidden_dim
+        self.state_dim = state_dim
         self.use_s6 = use_s6
         self.use_gnn = use_gnn
         self.temporal = SelectiveSSM(feature_dim, hidden_dim, state_dim) if use_s6 else None
-        self.static = nn.Sequential(nn.Linear(feature_dim * 2, hidden_dim), nn.GELU(), nn.LayerNorm(hidden_dim))
-        self.graph_layers = nn.ModuleList([ResidualGraphLayer(hidden_dim) for _ in range(2)])
+        self.static = (
+            None
+            if use_s6
+            else nn.Sequential(nn.Linear(feature_dim * 2, hidden_dim), nn.GELU(), nn.LayerNorm(hidden_dim))
+        )
+        self.graph_layers = nn.ModuleList([ResidualGraphLayer(hidden_dim) for _ in range(2)]) if use_gnn else None
         self.node_head = nn.Linear(hidden_dim, 1)
         self.graph_head = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, 1))
 
@@ -76,24 +98,61 @@ class CampaignModel(nn.Module):
         batch, nodes, steps, features = sequences.shape
         flat_sequence = sequences.view(batch * nodes, steps, features)
         flat_mask = mask.view(batch * nodes, steps)
-        if self.use_s6:
+        if self.temporal is not None:
             node_state = self.temporal(flat_sequence, flat_mask)
         else:
+            assert self.static is not None
             valid = flat_mask.unsqueeze(-1)
             count = valid.sum(dim=1).clamp_min(1.0)
             mean = (flat_sequence * valid).sum(dim=1) / count
-            maximum = flat_sequence.masked_fill(valid == 0, -1e9).max(dim=1).values
-            maximum = torch.where(torch.isfinite(maximum), maximum, torch.zeros_like(maximum))
+            maximum = _masked_max(flat_sequence, valid, dim=1)
             node_state = self.static(torch.cat([mean, maximum], dim=-1))
         node_state = node_state.view(batch, nodes, -1)
-        if self.use_gnn:
+        if self.graph_layers is not None:
             for layer in self.graph_layers:
                 node_state = layer(node_state, adjacency)
         node_logits = self.node_head(node_state).squeeze(-1)
         active_nodes = (mask.sum(dim=-1) > 0).float().unsqueeze(-1)
         count = active_nodes.sum(dim=1).clamp_min(1.0)
         mean_pool = (node_state * active_nodes).sum(dim=1) / count
-        max_pool = node_state.masked_fill(active_nodes == 0, -1e9).max(dim=1).values
-        max_pool = torch.where(torch.isfinite(max_pool), max_pool, torch.zeros_like(max_pool))
+        max_pool = _masked_max(node_state, active_nodes, dim=1)
         graph_logit = self.graph_head(torch.cat([mean_pool, max_pool], dim=-1)).squeeze(-1)
         return ModelOutput(graph_logit=graph_logit, node_logits=node_logits)
+
+
+def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
+    """Persist weights together with the dimensions needed to rebuild the model."""
+    torch.save(
+        {
+            "state_dict": model.state_dict(),
+            "feature_dim": model.feature_dim,
+            "hidden_dim": model.hidden_dim,
+            "state_dim": model.state_dim,
+        },
+        path,
+    )
+
+
+def load_campaign_model(path: str | Path) -> CampaignModel:
+    """Rebuild a hybrid CampaignModel from a checkpoint written by save_checkpoint.
+
+    Raw state dicts from pre-checkpoint versions are still accepted; their
+    dimensions are inferred from tensor shapes, and weights of the formerly
+    always-constructed (but unused) static branch are dropped.
+    """
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    if "state_dict" in payload:
+        model = CampaignModel(
+            int(payload["feature_dim"]),
+            hidden_dim=int(payload["hidden_dim"]),
+            state_dim=int(payload["state_dim"]),
+        )
+        model.load_state_dict(payload["state_dict"])
+    else:
+        model = CampaignModel(
+            payload["temporal.input_proj.weight"].shape[1],
+            hidden_dim=payload["node_head.weight"].shape[1],
+            state_dim=payload["temporal.a_log"].shape[1],
+        )
+        model.load_state_dict({key: value for key, value in payload.items() if not key.startswith("static.")})
+    return model

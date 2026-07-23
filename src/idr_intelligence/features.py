@@ -1,6 +1,9 @@
+"""Entity, edge, and feature extraction from canonical IdrEvents."""
+
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -34,6 +37,8 @@ FEATURE_DIM = len(FEATURE_NAMES)
 
 @dataclass(frozen=True)
 class EventProjection:
+    """One event decomposed into entities, typed edges, and a feature vector."""
+
     event: IdrEvent
     entities: tuple[str, ...]
     edges: tuple[tuple[str, str, str], ...]
@@ -41,6 +46,7 @@ class EventProjection:
 
 
 def project_event(event: IdrEvent, delta_seconds: float = 0.0) -> EventProjection:
+    """Project an event onto the fixed FEATURE_NAMES vector plus its graph pieces."""
     entities = extract_entities(event)
     edges = tuple(_derive_edges(event, entities))
     features = np.zeros(FEATURE_DIM, dtype=np.float32)
@@ -50,7 +56,7 @@ def project_event(event: IdrEvent, delta_seconds: float = 0.0) -> EventProjectio
     features[2] = np.log1p(max(delta_seconds, 0.0)) / 12.0
     features[3] = float("pid" in kind or "tgid" in kind)
     features[4] = float(kind.get("is_signed") is False)
-    features[5] = float(any(key.endswith("_ip") or key == "dest_ips" for key in kind))
+    features[5] = float(any(key.endswith("_ip") or key in ("dest_ips", "ntp_server") for key in kind))
     features[6] = float("exe_sha256" in kind or bool(kind.get("sha256")))
     features[7] = float(any(key in kind for key in ("domain", "sni", "ptr_query")))
     features[8] = float(any(key in kind for key in ("prefix", "observed_origin_asn", "asn_owner")))
@@ -65,6 +71,7 @@ def project_event(event: IdrEvent, delta_seconds: float = 0.0) -> EventProjectio
 
 
 def extract_entities(event: IdrEvent) -> tuple[str, ...]:
+    """List the deduplicated typed entities (host:, process:, ip:, …) an event mentions."""
     kind = event.kind
     host = str(event.metadata.get("host") or event.metadata.get("hostname") or "unknown-host")
     entities = [f"host:{host}"]
@@ -92,8 +99,9 @@ def extract_entities(event: IdrEvent) -> tuple[str, ...]:
     return tuple(dict.fromkeys(entities))
 
 
-def _derive_edges(event: IdrEvent, entities: tuple[str, ...]):
-    host = next((x for x in entities if x.startswith("host:")), None)
+def _derive_edges(event: IdrEvent, entities: tuple[str, ...]) -> Iterator[tuple[str, str, str]]:
+    """Yield (left, right, relation) edges implied by one event's entities."""
+    host = next(x for x in entities if x.startswith("host:"))
     process = next((x for x in entities if x.startswith("process:")), None)
     hashes = [x for x in entities if x.startswith("hash:")]
     ips = [x for x in entities if x.startswith("ip:")]
@@ -101,7 +109,7 @@ def _derive_edges(event: IdrEvent, entities: tuple[str, ...]):
     asns = [x for x in entities if x.startswith("asn:")]
     domains = [x for x in entities if x.startswith("domain:")]
     devices = [x for x in entities if x.startswith("device:")]
-    if host and process:
+    if process:
         yield host, process, "executes"
     for digest in hashes:
         yield process or host, digest, "identified_by"
@@ -115,14 +123,13 @@ def _derive_edges(event: IdrEvent, entities: tuple[str, ...]):
     for domain in domains:
         for ip in ips:
             yield domain, ip, "resolves_or_connects"
-        if host:
-            yield host, domain, "queries_or_visits"
+        yield host, domain, "queries_or_visits"
     for device in devices:
-        if host:
-            yield host, device, "contains"
+        yield host, device, "contains"
 
 
 def _is_production_bgp_anomaly(kind: dict) -> bool:
+    """True only for the nested sub-prefix hijack shape emitted by idr-main."""
     if kind.get("type") != "bgp_anomaly":
         return False
     nested = kind.get("kind")

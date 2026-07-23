@@ -1,3 +1,5 @@
+"""Canonical IdrEvent shape, validation, and scoring priors."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -30,6 +32,8 @@ KIND_PRIOR = {
 
 @dataclass(frozen=True)
 class IdrEvent:
+    """One validated event in the canonical shape serialized by idr_common::IdrEvent."""
+
     id: str
     timestamp: datetime
     source: str
@@ -39,10 +43,12 @@ class IdrEvent:
 
     @property
     def kind_type(self) -> str:
+        """The tag inside the kind object, e.g. "socket_lineage"."""
         return str(self.kind.get("type", "unknown"))
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "IdrEvent":
+        """Validate one decoded JSON object; raise ValueError naming what's wrong."""
         required = {"id", "timestamp", "source", "severity", "kind"}
         missing = sorted(required - raw.keys())
         if missing:
@@ -63,6 +69,7 @@ class IdrEvent:
 
 
 def parse_events(rows: Iterable[dict[str, Any]]) -> list[IdrEvent]:
+    """Validate many raw objects and return them in chronological order."""
     return sorted((IdrEvent.from_dict(row) for row in rows), key=lambda event: (event.timestamp, event.id))
 
 

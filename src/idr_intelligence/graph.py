@@ -1,3 +1,5 @@
+"""Temporal graph construction with per-node evidence provenance."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +12,8 @@ from .schema import IdrEvent
 
 @dataclass(frozen=True)
 class TemporalGraph:
+    """Entity nodes with ordered feature histories, normalized adjacency, and evidence IDs."""
+
     node_ids: tuple[str, ...]
     sequences: np.ndarray
     mask: np.ndarray
@@ -23,6 +27,7 @@ class TemporalGraph:
 
 
 def build_temporal_graph(events: list[IdrEvent], max_steps: int = 24) -> TemporalGraph:
+    """Order events, accumulate per-entity histories, and normalize the adjacency."""
     if not events:
         raise ValueError("at least one event is required")
     ordered = sorted(events, key=lambda event: (event.timestamp, event.id))
@@ -35,8 +40,8 @@ def build_temporal_graph(events: list[IdrEvent], max_steps: int = 24) -> Tempora
 
     node_ids = tuple(dict.fromkeys(entity for projection in projections for entity in projection.entities))
     node_index = {node_id: index for index, node_id in enumerate(node_ids)}
-    histories = [[] for _ in node_ids]
-    evidence = [[] for _ in node_ids]
+    histories: list[list[np.ndarray]] = [[] for _ in node_ids]
+    evidence: list[list[str]] = [[] for _ in node_ids]
     adjacency = np.eye(len(node_ids), dtype=np.float32)
     relation_counts: dict[str, int] = {}
 

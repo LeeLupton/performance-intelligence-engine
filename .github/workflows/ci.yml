@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -23,7 +24,8 @@ jobs:
             python-pytorch \
             python-scikit-learn \
             python-pytest \
-            python-ruff
+            python-ruff \
+            mypy
 
       - uses: actions/checkout@v4
 
@@ -52,3 +54,6 @@ jobs:
 
       - name: Run lint
         run: ruff check src tests
+
+      - name: Run type check
+        run: .venv/bin/python -m mypy src

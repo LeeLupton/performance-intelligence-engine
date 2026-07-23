@@ -1,3 +1,5 @@
+"""Matched benign/malicious campaign generator for the synthetic benchmark."""
+
 from __future__ import annotations
 
 import uuid
@@ -7,6 +9,7 @@ from .schema import IdrEvent
 
 
 def simulate_campaign(label: int, seed: int, host: str | None = None) -> list[IdrEvent]:
+    """Emit six events; label=1 converges host/hash/IP in kill-chain order, label=0 scatters them."""
     primary_host = host or f"workstation-{seed % 19:02d}"
     start = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=seed * 3)
     events: list[IdrEvent] = []
