@@ -338,6 +338,104 @@ def test_drift_is_none_without_snapshot():
     assert finding.feature_drift is None
 
 
+def _timed_events(times_and_hosts):
+    from datetime import datetime, timedelta, timezone
+
+    base = {"source": "kernel_ebpf", "severity": "HIGH"}
+    start = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+    out = []
+    for idx, (minute, host) in enumerate(times_and_hosts):
+        stamp = (start + timedelta(minutes=minute)).isoformat()
+        out.append(IdrEvent.from_dict({
+            **base, "id": chr(97 + idx) * 8 + "-0000-0000-0000-00000000000" + str(idx + 1),
+            "timestamp": stamp, "kind": {"type": "socket_lineage", "pid": 1, "dst_ip": "203.0.113.9"},
+            "metadata": {"host": host},
+        }))
+    return out
+
+
+def test_edge_decay_weights():
+    from idr_intelligence.graph import build_temporal_graph
+
+    # host:alpha connects to ip at t=0 (via first event) and is refreshed each event.
+    events = _timed_events([(0, "alpha"), (30, "alpha")])
+    binary = build_temporal_graph(events, decay_half_life=None)
+    # Same graph, decayed: the alpha<->ip edge last reinforced at t=30 == last event,
+    # so age 0 -> weight 1; an edge only seen at t=0 would be down-weighted.
+    decayed = build_temporal_graph(events, decay_half_life=1800.0)
+    assert binary.adjacency.shape == decayed.adjacency.shape
+    # A fresh edge keeps full weight; a graph with a stale edge must differ from binary.
+    stale = _timed_events([(0, "alpha"), (0, "beta"), (60, "alpha")])
+    g_bin = build_temporal_graph(stale, decay_half_life=None)
+    g_dec = build_temporal_graph(stale, decay_half_life=1800.0)  # 30-min half-life
+    assert not np.allclose(g_bin.adjacency, g_dec.adjacency)
+
+
+def test_edge_decay_half_life_math():
+    from idr_intelligence.graph import build_temporal_graph
+
+    # beta seen only at t=0; last event at t=60min=3600s; half-life 3600s -> edge factor 0.5.
+    events = _timed_events([(0, "beta"), (60, "alpha")])
+    g = build_temporal_graph(events, decay_half_life=3600.0)
+    binary = build_temporal_graph(events, decay_half_life=None)
+    beta_idx = g.node_ids.index("host:beta")
+
+    def max_off_diagonal(adjacency, idx):
+        row = adjacency[idx].copy()
+        row[idx] = 0.0
+        return float(row.max())
+
+    # Decaying beta's stale edge lowers its normalized off-diagonal weight.
+    assert max_off_diagonal(g.adjacency, beta_idx) < max_off_diagonal(binary.adjacency, beta_idx)
+
+
+def test_graph_budget_evicts_least_recent():
+    from idr_intelligence.bounded_graph import GraphBudget
+    from idr_intelligence.graph import build_temporal_graph
+
+    events = _timed_events([(0, "h0"), (10, "h1"), (20, "h2"), (30, "h3")])
+    budget = GraphBudget(max_nodes=3)
+    graph = build_temporal_graph(events, budget=budget)
+    assert graph.node_count == 3
+    assert len(graph.evictions) >= 1
+    evicted = {record.entity for record in graph.evictions}
+    assert "host:h0" in evicted                       # oldest host dropped
+    assert all(record.reason == "node_budget" for record in graph.evictions)
+    # Unbounded default keeps everyone.
+    assert build_temporal_graph(events).evictions == ()
+
+
+def test_graph_budget_apply_is_deterministic():
+    from datetime import datetime, timezone
+
+    from idr_intelligence.bounded_graph import GraphBudget
+
+    def t(minute):
+        return datetime(2026, 1, 1, 12, minute, tzinfo=timezone.utc)
+
+    last_seen = {"a": t(0), "b": t(5), "c": t(5), "d": t(9)}
+    kept, evictions = GraphBudget(max_nodes=2).apply(last_seen)
+    assert set(kept) == {"c", "d"}                     # newest two; b/c tie broken by id
+    assert {e.entity for e in evictions} == {"a", "b"}
+    assert GraphBudget(max_nodes=10).apply(last_seen) == (("a", "b", "c", "d"), ())
+
+
+def test_decay_half_life_roundtrips_in_checkpoint(tmp_path):
+    for half_life in (None, 900.0):
+        model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, decay_half_life=half_life)
+        path = tmp_path / f"decay_{half_life}.pt"
+        save_checkpoint(model, path)
+        assert load_campaign_model(path).decay_half_life == half_life
+
+
+def test_decay_ablation_reports_three_settings():
+    from idr_intelligence.training import decay_ablation
+
+    report = decay_ablation(scenario="distractor", samples=20, epochs=1, seed=5)
+    assert set(report["per_setting"]) == {"none", "1h", "15m"}
+    assert report["best_setting"] in report["per_setting"]
+
+
 def test_per_entity_deltas_track_last_seen():
     from idr_intelligence.graph import build_temporal_graph
 

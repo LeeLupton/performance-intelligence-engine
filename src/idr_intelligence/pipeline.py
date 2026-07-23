@@ -51,7 +51,7 @@ def score_events(
     top_k: int = DEFAULT_CONFIG.scoring.top_k,
 ) -> IntelligenceFinding:
     """Score one event set and return a finding with ranked entities and evidence."""
-    graph = build_temporal_graph(events, max_steps=max_steps, time_mode=model.time_mode)
+    graph = build_temporal_graph(events, max_steps=max_steps, time_mode=model.time_mode, decay_half_life=model.decay_half_life)
     first = min(events, key=lambda event: (event.timestamp, event.id))
     sequence = torch.from_numpy(graph.sequences).unsqueeze(0)
     mask = torch.from_numpy(graph.mask).unsqueeze(0)

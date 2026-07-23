@@ -42,7 +42,7 @@ def set_seed(seed: int) -> None:
     torch.set_num_threads(1)
 
 
-def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, malicious_rate: float = 0.5, scenario: str = "v0_easy", time_mode: str = "time_aware") -> Batch:
+def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, malicious_rate: float = 0.5, scenario: str = "v0_easy", time_mode: str = "time_aware", decay_half_life: float | None = None) -> Batch:
     """Simulate benign/malicious campaigns with seeded random labels and pad into one Batch.
 
     Labels are drawn per-sample (not the former index%2 alternation, which
@@ -61,7 +61,7 @@ def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONF
     labels = []
     for index in range(samples):
         label = int(label_row[index])
-        graph = build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), max_steps=max_steps, time_mode=time_mode)
+        graph = build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), max_steps=max_steps, time_mode=time_mode, decay_half_life=decay_half_life)
         count = min(graph.node_count, max_nodes)
         sequences[index, :count] = graph.sequences[:count]
         mask[index, :count] = graph.mask[:count]
@@ -276,7 +276,7 @@ def scenario_generalization(model: CampaignModel, seed: int, samples: int = 20) 
         labels = []
         for index in range(samples):
             label = index % 2
-            graphs.append(build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), time_mode=model.time_mode))
+            graphs.append(build_temporal_graph(simulate_campaign(label, seed + index, scenario=scenario), time_mode=model.time_mode, decay_half_life=model.decay_half_life))
             labels.append(float(label))
         max_nodes = max(graph.node_count for graph in graphs)
         max_steps = max(graph.sequences.shape[1] for graph in graphs)
@@ -323,6 +323,35 @@ def time_ablation(scenario: str = "low_and_slow", samples: int = 80, epochs: int
         "metric": "brier",
         "per_mode": per_mode,
         "best_mode": min(per_mode, key=lambda mode: per_mode[mode]["brier"]),
+        "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
+    }
+
+
+def decay_ablation(scenario: str = "distractor", samples: int = 80, epochs: int = 3, seed: int = 7) -> dict:
+    """Compare edge-decay half-lives (none / 1h / 15m) for the hybrid on one scenario.
+
+    W12's acceptance test: the distractor family plants benign noise on the
+    campaign host, so stale edges are exactly what decay should suppress. Whether
+    it helps at this budget is recorded honestly, not presumed.
+    """
+    if scenario not in SCENARIOS:
+        raise ValueError(f"unknown scenario: {scenario}")
+    settings: dict[str, float | None] = {"none": None, "1h": 3600.0, "15m": 900.0}
+    per_setting: dict[str, dict[str, float]] = {}
+    for name, half_life in settings.items():
+        set_seed(seed)
+        train, validation, test = chronological_split(
+            make_dataset(samples=samples, seed=seed, scenario=scenario, decay_half_life=half_life)
+        )
+        model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, decay_half_life=half_life)
+        _fit(model, train, validation, epochs)
+        metrics = _evaluate(model, test)
+        per_setting[name] = {key: metrics[key] for key in ("brier", "roc_auc", "pr_auc")}
+    return {
+        "scenario": scenario,
+        "metric": "brier",
+        "per_setting": per_setting,
+        "best_setting": min(per_setting, key=lambda name: per_setting[name]["brier"]),
         "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
     }
 
@@ -415,7 +444,7 @@ def evidence_precision_at_5(model: CampaignModel, seeds: list[int], k: int = 5) 
     model.eval()
     precisions = []
     for seed in seeds:
-        graph = build_temporal_graph(simulate_campaign(1, seed), time_mode=model.time_mode)
+        graph = build_temporal_graph(simulate_campaign(1, seed), time_mode=model.time_mode, decay_half_life=model.decay_half_life)
         with torch.no_grad():
             output = model(
                 torch.from_numpy(graph.sequences).unsqueeze(0),
