@@ -33,26 +33,67 @@ class SelectiveSSM(nn.Module):
         self.time_aware = time_aware
         self.time_weight = nn.Parameter(torch.zeros(1)) if time_aware else None
 
+    def initial_state(self, batch: int, device: torch.device, dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
+        """Zeroed (state, output) for a fresh scan — the streaming entry point."""
+        state = torch.zeros(batch, self.hidden_dim, self.state_dim, device=device, dtype=dtype)
+        output = torch.zeros(batch, self.hidden_dim, device=device, dtype=dtype)
+        return state, output
+
+    def _recurrence(
+        self,
+        u_t: torch.Tensor,
+        state: torch.Tensor,
+        output: torch.Tensor,
+        active: torch.Tensor,
+        delta_t: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """One selective-scan step on a projected input row — the single code path.
+
+        u_t is input-projected [batch, hidden]; active is [batch, 1, 1]. Returns
+        the updated (state, output). forward() loops this; step() wraps it with
+        the input projection so training, streaming, and export share it exactly.
+        """
+        delta_pre = self.delta(u_t)
+        if self.time_weight is not None and delta_t is not None:
+            delta_pre = delta_pre + self.time_weight * delta_t.unsqueeze(-1)
+        delta = F.softplus(delta_pre).unsqueeze(-1).clamp(max=5.0)
+        a_bar = torch.exp(delta * -torch.exp(self.a_log))
+        b = self.b_proj(u_t).view(-1, self.hidden_dim, self.state_dim)
+        candidate = a_bar * state + delta * b * u_t.unsqueeze(-1)
+        new_state = active * candidate + (1.0 - active) * state
+        c = self.c_proj(u_t).view(-1, self.hidden_dim, self.state_dim)
+        step_output = (c * new_state).sum(-1) + self.skip * u_t
+        new_output = active.squeeze(-1) * step_output + (1.0 - active.squeeze(-1)) * output
+        return new_state, new_output
+
+    def step(
+        self,
+        x_t: torch.Tensor,
+        state: torch.Tensor,
+        output: torch.Tensor,
+        active: torch.Tensor | None = None,
+        delta_t: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Advance one raw event: project x_t and run the recurrence.
+
+        This is the streaming/export cell — feed one event's raw features and the
+        carried (state, output), get the next (state, output). active defaults to
+        1 (a real event). The layer-norm is applied by the caller/forward on the
+        final output so a partial scan can be resumed without re-normalizing.
+        """
+        u_t = self.input_proj(x_t)
+        if active is None:
+            active = torch.ones(x_t.shape[0], 1, 1, device=x_t.device, dtype=x_t.dtype)
+        return self._recurrence(u_t, state, output, active, delta_t)
+
     def forward(self, sequence: torch.Tensor, mask: torch.Tensor, deltas: torch.Tensor | None = None) -> torch.Tensor:
-        u = self.input_proj(sequence)
+        u = self.input_proj(sequence)  # hoisted: one projection over the whole sequence
         batch, steps, _ = u.shape
-        state = torch.zeros(batch, self.hidden_dim, self.state_dim, device=u.device, dtype=u.dtype)
-        output = torch.zeros(batch, self.hidden_dim, device=u.device, dtype=u.dtype)
-        a = -torch.exp(self.a_log)
-        for step in range(steps):
-            current = u[:, step]
-            active = mask[:, step].view(batch, 1, 1)
-            delta_pre = self.delta(current)
-            if self.time_weight is not None and deltas is not None:
-                delta_pre = delta_pre + self.time_weight * deltas[:, step].unsqueeze(-1)
-            delta = F.softplus(delta_pre).unsqueeze(-1).clamp(max=5.0)
-            a_bar = torch.exp(delta * a)
-            b = self.b_proj(current).view(batch, self.hidden_dim, self.state_dim)
-            candidate = a_bar * state + delta * b * current.unsqueeze(-1)
-            state = active * candidate + (1.0 - active) * state
-            c = self.c_proj(current).view(batch, self.hidden_dim, self.state_dim)
-            step_output = (c * state).sum(-1) + self.skip * current
-            output = active.squeeze(-1) * step_output + (1.0 - active.squeeze(-1)) * output
+        state, output = self.initial_state(batch, u.device, u.dtype)
+        for step_index in range(steps):
+            active = mask[:, step_index].view(batch, 1, 1)
+            delta_t = deltas[:, step_index] if deltas is not None else None
+            state, output = self._recurrence(u[:, step_index], state, output, active, delta_t)
         return self.norm(output)
 
 

@@ -561,6 +561,50 @@ def test_per_entity_deltas_track_last_seen():
     assert not np.allclose(g_global.sequences[host_idx, :, 2], g_per.sequences[host_idx, :, 2])
 
 
+def test_step_cell_loops_to_forward():
+    from idr_intelligence.models import SelectiveSSM
+
+    torch.manual_seed(0)
+    for time_aware in (False, True):
+        ssm = SelectiveSSM(FEATURE_DIM, 12, 4, time_aware=time_aware)
+        if time_aware:
+            ssm.time_weight.data.fill_(0.7)  # exercise the time term
+        ssm.eval()
+        seq = torch.randn(3, 6, FEATURE_DIM)
+        mask = torch.ones(3, 6)
+        deltas = torch.rand(3, 6)
+        with torch.no_grad():
+            batched = ssm(seq, mask, deltas)
+            # Manually loop the public step() cell, carrying (state, output).
+            state, output = ssm.initial_state(3, seq.device, seq.dtype)
+            active = torch.ones(3, 1, 1)
+            for t in range(6):
+                state, output = ssm.step(seq[:, t], state, output, active, deltas[:, t])
+            looped = ssm.norm(output)
+        torch.testing.assert_close(batched, looped)
+
+
+def test_step_cell_respects_mask_and_resumes():
+    from idr_intelligence.models import SelectiveSSM
+
+    torch.manual_seed(1)
+    ssm = SelectiveSSM(FEATURE_DIM, 8, 4)
+    ssm.eval()
+    seq = torch.randn(2, 5, FEATURE_DIM)
+    mask = torch.tensor([[0.0, 1.0, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0, 1.0]])
+    with torch.no_grad():
+        full = ssm(seq, mask, None)
+        # Resume mid-scan: run the first 3 real steps, snapshot state, finish.
+        state, output = ssm.initial_state(2, seq.device, seq.dtype)
+        for t in range(5):
+            active = mask[:, t].view(2, 1, 1)
+            state, output = ssm.step(seq[:, t], state, output, active)
+            if t == 2:
+                state, output = state.clone(), output.clone()  # snapshot/restore is lossless
+        resumed = ssm.norm(output)
+    torch.testing.assert_close(full, resumed)
+
+
 def test_time_weight_zero_is_identity():
     from idr_intelligence.models import SelectiveSSM
 
