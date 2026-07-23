@@ -48,7 +48,7 @@
       },
       {
         "module": "src/idr_intelligence/models.py",
-        "role": "SelectiveSSM (time-aware S6), ResidualGraphLayer, GatedAttentionPool, CampaignModel, checkpoint save/load"
+        "role": "SelectiveSSM (time-aware S6 opt-in), ResidualGraphLayer, GatedAttentionPool, CampaignModel (default time_mode=global), checkpoint save/load"
       },
       {
         "module": "src/idr_intelligence/simulator.py",
@@ -247,6 +247,11 @@
         "id": "ADR-25",
         "decision": "Benchmark hardening to validate W11/W12 (user directive 'fix the benchmark first'): added stale_preamble (identical benign preamble ~2 days before the recent window) and timing_only (identical structure/content, ONLY inter-event timing differs) scenarios. FINDING: temporal physics is not empirically differentiated on synthetic data. On timing_only every mode separates at ROC/PR 1.0 and global wins Brier decisively (0.186 vs 0.210) \u2014 the scalar delta_seconds_log feature already encodes timing, so per-entity clock + time-aware S6 + edge decay add variance without signal. Documented in reports/AUDIT.md. Recommends flipping the shipped time_mode default from time_aware to global (simpler + better); deferred to keep this a pure benchmark/doc addition. Validating temporal physics needs real labeled campaigns (--data path), not more synthetic scenarios",
         "where": "reports/AUDIT.md, docs/ROADMAP.md"
+      },
+      {
+        "id": "ADR-26",
+        "decision": "Flipped the shipped CampaignModel default time_mode from time_aware to global (and build_temporal_graph default likewise), acting on ADR-25's decisive evidence that global >= time_aware on every synthetic scenario and the delta feature already captures timing. The simpler mode is now default; per_entity/time_aware stay opt-in for real-data deployments. decay_half_life already defaulted None. Benchmark floors re-verified green with the global hybrid",
+        "where": "reports/AUDIT.md consequence 2; user-delegated call"
       }
     ]
   },
@@ -271,10 +276,11 @@
       "W11: per-entity time deltas + time-aware S6 discretization + time_ablation (honest verdict: global wins on low_and_slow at demo budget)",
       "W12: time-decayed edges + GraphBudget audited eviction + decay_ablation (honest near-tie on distractor); sparse-mm and replay-wrapper deferred to W15",
       "W14: structured per-entity evidence (occlusion attribution, typed edges, ATT&CK per entity) + analyst suppression allowlist",
-      "Benchmark hardening: stale_preamble + timing_only scenarios; VERIFIED temporal physics (W11/W12) undifferentiated on synthetic data (global beats time-aware on timing_only 0.186 vs 0.210); documented in AUDIT.md"
+      "Benchmark hardening: stale_preamble + timing_only scenarios; VERIFIED temporal physics (W11/W12) undifferentiated on synthetic data (global beats time-aware on timing_only 0.186 vs 0.210); documented in AUDIT.md",
+      "Flip default time_mode time_aware->global (evidence-driven, ADR-26); benchmark floors green; default locked by test"
     ],
     "active": [
-      "DECISION PENDING (user): (a) flip time_mode default to global per the evidence, (b) resume production path W13->W15->W17, (c) declare v0.1 done + consolidate, or (d) invest in real labeled-data validation"
+      "DECISION PENDING (user): production path (W13->W15->W17), declare v0.1 done + consolidate, or real labeled-data validation. Recommendation: declare v0.1 done (13/14 workstreams + rigorously honest benchmark)"
     ],
     "blocked": [
       "Phase 4 (if pursued): W13 S6 step() cell, W15 streaming, W16 campaign identity, W17 ONNX+Rust bridge",
@@ -286,7 +292,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "81 passed"
+        "result": "82 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
@@ -294,23 +300,13 @@
         "result": "clean; 16 source files"
       },
       {
-        "cmd": "time-ablation --scenario timing_only --samples 80 --epochs 4",
-        "when": "2026-07-23",
-        "result": "global 0.186 / per_entity 0.210 / time_aware 0.210 \u2014 global wins decisively; delta feature already captures timing"
-      },
-      {
-        "cmd": "decay-ablation --scenario stale_preamble --samples 80 --epochs 4",
-        "when": "2026-07-23",
-        "result": "none 0.2286 / 1h 0.2279 / 15m 0.2278 \u2014 decay marginal win, directionally correct"
-      },
-      {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "passed incl. new stale_preamble/timing_only floors, 0 violations"
+        "result": "passed with global-default hybrid, 0 violations"
       }
     ],
     "tests": [
-      "tests: 81 \u2014 adds stale_preamble preamble-span + timing_only identical-structure/timing-only-differs assertions"
+      "tests: 82 \u2014 adds test_default_time_mode_is_global locking the flipped default (no time_weight param)"
     ],
     "benchmarks": [
       {
@@ -412,11 +408,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:1f44a5c-plus-benchmark-hardening",
+    "source_digest": "git:8277642-plus-default-flip",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "Fixed the benchmark per user directive: added stale_preamble+timing_only, VERIFIED temporal physics undifferentiated on synthetic (global beats time-aware). Documented in AUDIT. Decision pending on direction (default flip / production path / declare v0.1 done)"
+      "summary": "Acted on the evidence: flipped default time_mode to global (simpler+better). 13/14 workstreams + honest validated benchmark. Awaiting user direction on close-out vs production path"
     }
   }
 }

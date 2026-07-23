@@ -114,7 +114,7 @@ class CampaignModel(nn.Module):
     node_head ranking as an ablation arm.
     """
 
-    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True, pooling: str = "attention", time_mode: str = "time_aware", decay_half_life: float | None = None) -> None:
+    def __init__(self, feature_dim: int, hidden_dim: int = 32, state_dim: int = 8, use_s6: bool = True, use_gnn: bool = True, pooling: str = "attention", time_mode: str = "global", decay_half_life: float | None = None) -> None:
         super().__init__()
         if pooling not in ("attention", "uniform"):
             raise ValueError(f"unknown pooling mode: {pooling}")

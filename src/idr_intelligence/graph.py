@@ -42,7 +42,7 @@ class TemporalGraph:
 def build_temporal_graph(
     events: list[IdrEvent],
     max_steps: int = 24,
-    time_mode: str = "time_aware",
+    time_mode: str = "global",
     decay_half_life: float | None = None,
     budget: GraphBudget | None = None,
 ) -> TemporalGraph:

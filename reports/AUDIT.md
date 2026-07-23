@@ -59,7 +59,7 @@ a demonstrated accuracy gain:
 
 1. `decay_half_life` already defaults to `None` (off) on the shipped hybrid — the
    simplest setting, consistent with the evidence.
-2. `time_mode` still defaults to `time_aware` (from W11). The evidence now favors
-   defaulting to `global`, which is simpler and empirically better across every
-   scenario measured; flipping it is the recommended follow-up, deferred here so
-   this change stays a pure, low-risk benchmark-and-documentation addition.
+2. `time_mode` now defaults to `global` (changed from `time_aware`) — the
+   simpler mode, and empirically better across every scenario measured.
+   Per-entity and time-aware modes remain available explicitly for real-data
+   deployments where entity-relative rhythms are expected to carry signal.
