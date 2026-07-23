@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install Arch Linux dependencies
+        run: |
+          pacman -Syu --noconfirm \
+            git \
+            python \
+            python-pip \
+            python-setuptools \
+            python-wheel \
+            python-numpy \
+            python-pytorch \
+            python-scikit-learn \
+            python-pytest \
+            python-ruff
+
+      - uses: actions/checkout@v4
+
+      - name: Create virtual environment
+        run: python -m venv --system-site-packages .venv
+
+      - name: Install project
+        run: .venv/bin/python -m pip install --no-deps -e .
+
+      - name: Verify imports
+        run: |
+          .venv/bin/python - <<'PY'
+          import numpy
+          import sklearn
+          import torch
+          import idr_intelligence
+
+          print("numpy:", numpy.__version__)
+          print("scikit-learn:", sklearn.__version__)
+          print("torch:", torch.__version__)
+          print("idr-intelligence:", idr_intelligence.__file__)
+          PY
+
+      - name: Run tests
+        run: .venv/bin/python -m pytest -q
+
+      - name: Run lint
+        run: .venv/bin/ruff check src tests
