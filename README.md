@@ -20,16 +20,15 @@ It is designed to answer a concrete question:
 
 > Do individually weak signals become a credible campaign when their order and infrastructure relationships are evaluated together?
 
-## What the demo does
+## What's built
 
-The demo creates chronological IDR-style benign and malicious campaign streams, trains four models under the same split, compares their held-out metrics, and emits an evidence-linked finding:
+- **Model** — a selective S6 state-space encoder over each entity's ordered history feeding a residual GNN over the entity graph, with gated-attention pooling whose scores *are* the evidence ranking (so the ranking is trained, not a random projection).
+- **Calibrated, provenanced findings** — every `IntelligenceFinding` carries an affine-calibrated probability (plus the raw value and calibration string), an ATT&CK stage narrative, per-entity evidence (the events implicating each entity, its typed edges to other flagged entities, the features that drove it by occlusion attribution, and its ATT&CK techniques), a feature-schema hash, and an advisory feature-drift block.
+- **Honest evaluation** — a five-arm chronological ablation with calibration (ECE, log-loss) and operating-point (recall@FPR, precision@k) metrics; cross-scenario generalization over 11 simulator families; rolling-origin cross-validation that reports a statistical verdict (or an honest "tie"); and a frozen benchmark manifest whose regression floors fail CI on every build.
+- **Real-data path** — `LabeledWindow` ingestion (`--data`) swaps the simulator for real `*.labeled.ndjson` campaigns with zero model changes.
+- **Deployment controls** — an analyst suppression allowlist that attenuates entities out of the ranking without hiding the finding or touching the campaign probability; a bounded, audited node budget for streaming memory.
 
-1. static baseline;
-2. S6-only;
-3. GNN-only;
-4. S6 + GNN.
-
-The simulator uses event families already present in `idr-main`, including `socket_lineage`, `suspicious_beacon`, `bgp_anomaly`, `ntp_time_shift`, `hsts_time_manipulation`, and `nvme_latency_anomaly`.
+The simulator uses event families already present in `idr-main` (`socket_lineage`, `suspicious_beacon`, `bgp_anomaly`, `ntp_time_shift`, `hsts_time_manipulation`, `nvme_latency_anomaly`, …) and 11 scenario families spanning graded difficulty, hard negatives, evasion (low-and-slow, split-host, hash-rotation), identity-pivot lateral movement, and timing-only discrimination.
 
 ## Run it
 
@@ -41,20 +40,22 @@ pytest
 idr-intelligence demo --samples 80 --epochs 3 --output reports/demo.json
 ```
 
-The command prints a benchmark and an `IntelligenceFinding` containing a campaign probability, next-stage hypothesis, ranked entities, exact source event IDs, and model version.
-
-Synthetic metrics demonstrate that the software and ablation workflow function; they are not claims of production detection accuracy.
-
-## Score an IDR NDJSON export
-
-After the demo creates `artifacts/hybrid_model.pt`:
+`demo` prints the ablation benchmark and an evidence-linked `IntelligenceFinding`. Other subcommands:
 
 ```bash
-idr-intelligence score examples/idr_campaign.ndjson \
-  --weights artifacts/hybrid_model.pt
+idr-intelligence score events.ndjson --weights artifacts/hybrid_model.pt   # score an NDJSON export (each line a serialized IdrEvent)
+idr-intelligence score events.ndjson --suppress 'ip:' --suppress host:known-scanner  # analyst allowlist
+idr-intelligence benchmark --manifest benchmarks/v1.json                    # frozen regression floors; exit 1 on violation (runs in CI)
+idr-intelligence ablation --folds 3 --replicates 3                          # rolling-origin CV with a statistical best-model verdict
+idr-intelligence time-ablation --scenario timing_only                       # global vs per-entity vs time-aware S6
+idr-intelligence decay-ablation --scenario distractor                       # edge-decay half-life comparison
 ```
 
-Each line must be a serialized `IdrEvent`.
+Synthetic metrics demonstrate that the software and evaluation workflow function; they are not claims of production detection accuracy — see `reports/AUDIT.md`.
+
+## A note on the temporal-physics workstreams
+
+The engine ships per-entity time deltas, time-aware S6 discretization, and time-decayed edges — architecturally correct and fully tested, but **verified (not assumed) to be undifferentiated on synthetic data**: a single `delta_seconds_log` feature already captures the inter-event gap, so on the `timing_only` scenario (structure held identical, timing the sole discriminator) the simpler `global` mode wins. They stay as opt-in modes for real high-cardinality streams; the shipped default is the simpler mode. This is documented in `reports/AUDIT.md` so the machinery is never mistaken for a demonstrated accuracy gain.
 
 ## Integration boundary
 
@@ -75,18 +76,27 @@ The model must not trigger `PanicResponse` by itself. It is an advisory layer th
 ## Repository map
 
 ```text
-src/idr_intelligence/schema.py      IdrEvent validation
-src/idr_intelligence/features.py    entity and feature extraction
-src/idr_intelligence/graph.py       temporal graph construction
-src/idr_intelligence/models.py      S6, GNN, and hybrid model
-src/idr_intelligence/training.py    chronological ablation benchmark
-src/idr_intelligence/pipeline.py    evidence-linked inference
-src/idr_intelligence/cli.py         demo and NDJSON scoring commands
-docs/ARCHITECTURE.md                integration design
-reports/AUDIT.md                    model-risk and engineering audit
-state.json                          compact engineering state record
+src/idr_intelligence/schema.py      IdrEvent + LabeledWindow validation
+src/idr_intelligence/config.py      EngineConfig: typed tunables, prior tables, config hash
+src/idr_intelligence/registry.py    ModelManifest, feature-schema hash, SchemaMismatchError
+src/idr_intelligence/features.py    entity extraction (incl. identity), typed edges, features
+src/idr_intelligence/graph.py       temporal graph: per-entity time, decayed edges, node budget
+src/idr_intelligence/bounded_graph.py  GraphBudget + audited eviction
+src/idr_intelligence/models.py      S6, GNN, gated-attention pooling, checkpoints
+src/idr_intelligence/attack.py      deterministic kind→ATT&CK mapping + next-stage
+src/idr_intelligence/simulator.py   11 scenario families with stage-level ground truth
+src/idr_intelligence/training.py    ablation, calibration, scenario gen, rolling-origin CV
+src/idr_intelligence/benchmark.py   frozen-manifest regression floors (CI gate)
+src/idr_intelligence/dataio.py      *.labeled.ndjson real-campaign ingestion
+src/idr_intelligence/pipeline.py    evidence-linked, calibrated scoring
+src/idr_intelligence/evidence.py    per-entity evidence (occlusion, edges, ATT&CK) + suppression
+src/idr_intelligence/cli.py         demo · score · benchmark · ablation · time/decay-ablation
+benchmarks/v1.json                  frozen benchmark manifest with regression floors
+docs/ARCHITECTURE.md                integration design + Rust EventKind contract
+reports/AUDIT.md                    model-risk audit + verified findings
+state.json                          canonical engineering state record (ADR log, evidence)
 ```
 
 ## Resume bullet
 
-> Built a temporal-graph threat intelligence engine for a Rust-based cross-layer IDR platform, combining selective S6 state-space sequence modeling with GNN propagation across host, process, IP, prefix, ASN, domain, and hardware entities; implemented chronological ablations, evidence-linked findings, CI, and model-risk controls.
+> Built a temporal-graph threat-intelligence engine for a Rust-based cross-layer IDR platform: selective S6 state-space modeling with GNN propagation and trained gated-attention evidence ranking across host, process, hash, IP, prefix, ASN, domain, identity, and hardware entities. Shipped calibrated, provenanced, ATT&CK-mapped findings with per-entity occlusion evidence; a CI-gated regression benchmark over 11 adversarial scenario families with rolling-origin cross-validation; real labeled-data ingestion; and model-risk controls — including adversarial self-review that caught a genuine calibration bug and a verified finding that the temporal-physics elaborations add no measurable value on synthetic data.

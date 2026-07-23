@@ -277,10 +277,11 @@
       "W12: time-decayed edges + GraphBudget audited eviction + decay_ablation (honest near-tie on distractor); sparse-mm and replay-wrapper deferred to W15",
       "W14: structured per-entity evidence (occlusion attribution, typed edges, ATT&CK per entity) + analyst suppression allowlist",
       "Benchmark hardening: stale_preamble + timing_only scenarios; VERIFIED temporal physics (W11/W12) undifferentiated on synthetic data (global beats time-aware on timing_only 0.186 vs 0.210); documented in AUDIT.md",
-      "Flip default time_mode time_aware->global (evidence-driven, ADR-26); benchmark floors green; default locked by test"
+      "Flip default time_mode time_aware->global (evidence-driven, ADR-26); benchmark floors green; default locked by test",
+      "v0.1 consolidation: README refreshed to match the shipped engine (capabilities, all CLI subcommands, full repo map, honest temporal-physics note, updated resume bullet)"
     ],
     "active": [
-      "DECISION PENDING (user): production path (W13->W15->W17), declare v0.1 done + consolidate, or real labeled-data validation. Recommendation: declare v0.1 done (13/14 workstreams + rigorously honest benchmark)"
+      "v0.1 substantively complete: 13/14 roadmap workstreams + validated honest benchmark + evidence-driven default. Remaining roadmap (W13/W15/W16/W17 production path) is optional native-integration plumbing, pending user direction"
     ],
     "blocked": [
       "Phase 4 (if pursued): W13 S6 step() cell, W15 streaming, W16 campaign identity, W17 ONNX+Rust bridge",
@@ -412,7 +413,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "Acted on the evidence: flipped default time_mode to global (simpler+better). 13/14 workstreams + honest validated benchmark. Awaiting user direction on close-out vs production path"
+      "summary": "v0.1 consolidation: README brought up to date with the full shipped engine. Project is a complete, well-evidenced, honestly-bounded advisory engine (13/14 workstreams). Production path (Rust/ONNX) remains the optional next thread"
     }
   }
 }
