@@ -119,6 +119,7 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
         "best_model": max(results, key=lambda name: results[name]["pr_auc"]),
         "warning": "Synthetic benchmark demonstrates the pipeline; it is not evidence of production accuracy.",
     }
+    trained["s6_gnn"].feature_stats = feature_snapshot(train)
     artifact = Path("artifacts/hybrid_model.pt")
     artifact.parent.mkdir(parents=True, exist_ok=True)
     save_checkpoint(trained["s6_gnn"], artifact)
@@ -166,6 +167,16 @@ def _fit_temperature(model: CampaignModel, validation: Batch) -> None:
         candidates = torch.cat([torch.tensor([1.0]), torch.logspace(-0.7, 0.7, 29)])
         losses = [loss_fn(logits / t, validation.labels).item() for t in candidates]
     model.temperature.fill_(float(candidates[int(np.argmin(losses))]))
+
+
+DRIFT_BIN_EDGES = [round(edge, 2) for edge in np.linspace(0.0, 1.5, 11).tolist()]
+
+
+def feature_snapshot(batch: Batch) -> dict:
+    """Per-feature histograms over the training batch's real event rows, for drift checks."""
+    rows = batch.sequences[batch.mask > 0].numpy()
+    histograms = [np.histogram(rows[:, index], bins=DRIFT_BIN_EDGES)[0].tolist() for index in range(rows.shape[1])]
+    return {"bin_edges": DRIFT_BIN_EDGES, "histograms": histograms, "sample_count": int(rows.shape[0])}
 
 
 def scenario_generalization(model: CampaignModel, seed: int, samples: int = 20) -> dict[str, dict[str, float]]:

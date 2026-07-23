@@ -1,0 +1,30 @@
+{
+  "suite_version": "v1",
+  "description": "Frozen regression floors for the five-variant ablation and cross-scenario generalization. Floors are tripwires with generous margins over the 2026-07-23 baseline (torch 2.13 cpu), not aspirations. Scenario floors are Brier-only: ranking metrics are unstable at this budget (distractor ROC observably flips between 0.0 and 1.0 across budgets), and flooring them would flake CI.",
+  "generator": {
+    "samples": 40,
+    "epochs": 2,
+    "seed": 7,
+    "malicious_rate": 0.5,
+    "scenario": "v0_easy"
+  },
+  "floors": {
+    "variant_metrics": {
+      "static_baseline": {"roc_auc_min": 0.8, "brier_max": 0.42},
+      "s6_only": {"roc_auc_min": 0.8, "brier_max": 0.34},
+      "gnn_only": {"roc_auc_min": 0.8, "brier_max": 0.35},
+      "s6_gnn": {"roc_auc_min": 0.8, "brier_max": 0.34},
+      "s6_gnn_uniform_pool": {"roc_auc_min": 0.8, "brier_max": 0.26}
+    },
+    "scenario_brier_max": {
+      "v0_easy": 0.36,
+      "graded": 0.39,
+      "distractor": 0.52,
+      "legit_update": 0.35,
+      "truncated": 0.36,
+      "low_and_slow": 0.36,
+      "split_host": 0.42,
+      "hash_rotation": 0.42
+    }
+  }
+}

@@ -77,6 +77,10 @@
       {
         "module": "src/idr_intelligence/attack.py",
         "role": "deterministic kind->ATT&CK tactic/technique table, observed stages, next-stage prediction"
+      },
+      {
+        "module": "src/idr_intelligence/benchmark.py",
+        "role": "frozen-manifest benchmark runner with regression floors (benchmarks/v1.json)"
       }
     ],
     "interfaces": [
@@ -88,7 +92,7 @@
       {
         "name": "checkpoint",
         "version": "v4",
-        "contract": "v3 fields + manifest {engine_version, feature_schema_hash, config_hash, created_at, calibration}; loader raises SchemaMismatchError when the manifest's feature schema disagrees with the runtime; manifestless v2/v3 and raw v1 checkpoints still load; state_dict carries a temperature buffer (defaulted to 1.0 for older checkpoints) and the manifest records the calibration string"
+        "contract": "v3 fields + manifest {engine_version, feature_schema_hash, config_hash, created_at, calibration}; loader raises SchemaMismatchError when the manifest's feature schema disagrees with the runtime; manifestless v2/v3 and raw v1 checkpoints still load; state_dict carries a temperature buffer (defaulted to 1.0 for older checkpoints) and the manifest records the calibration string; payload also carries feature_stats (per-feature training histograms) for drift checks"
       },
       {
         "name": "TemporalGraph",
@@ -97,8 +101,8 @@
       },
       {
         "name": "IntelligenceFinding",
-        "version": "v4",
-        "contract": "v3 fields + observed_attack_stages [{tactic, technique, kind_type, first_event_id}]; predicted_next_stage is now the next unobserved ATT&CK tactic after the furthest observed (deterministic table in attack.py, never learned)"
+        "version": "v5",
+        "contract": "v4 fields + feature_drift {psi_max, psi_mean, flagged_features} | null \u2014 advisory PSI of scored features vs the checkpoint's training snapshot"
       }
     ],
     "decisions": [
@@ -181,6 +185,11 @@
         "id": "ADR-16",
         "decision": "Simulator scenarios are deterministic in (label, seed, scenario) with no RNG object; every scenario keeps the same six kill-chain kinds so nothing separates classes except convergence/order/semantics; train_ablation reports scenario_generalization for the trained hybrid across all families",
         "where": "docs/ROADMAP.md W6"
+      },
+      {
+        "id": "ADR-17",
+        "decision": "benchmarks/v1.json freezes generator config + floors; scenario floors are Brier-only because ranking metrics observably flip (distractor ROC 0.0<->1.0) at CI budgets and would flake. CI runs the manifest every build. Checkpoints embed per-feature training histograms; scoring attaches advisory PSI drift (0.2 flag line) to findings",
+        "where": "docs/ROADMAP.md W7"
       }
     ]
   },
@@ -196,13 +205,14 @@
       "W3: temperature calibration (validation-NLL grid, T buffer in state_dict, manifest calibration string) + ECE/log-loss/MCE metrics + raw/calibrated finding fields",
       "W4: seeded random labels + pos_weight + recall@FPR and precision@k operating-point metrics; CLI --malicious-rate",
       "W5: ATT&CK mapping (attack.py) \u2014 Phase 1 complete",
-      "W6: graded + adversarial simulator scenarios with per-scenario generalization table"
+      "W6: graded + adversarial simulator scenarios with per-scenario generalization table",
+      "W7: versioned benchmark suite (benchmarks/v1.json, runner, CI gate) + feature-snapshot drift on findings"
     ],
     "active": [
-      "W7: versioned benchmark suite with CI metric floors + training-time feature snapshot for drift monitoring"
+      "W8: LabeledWindow real-campaign ingestion \u2014 schema, *.labeled.ndjson loader, --data flag on train_ablation"
     ],
     "blocked": [
-      "Phase 2 remainder: W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
+      "Phase 2 remainder: W9 rolling-origin CV, W10 identity entities",
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
@@ -213,26 +223,21 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "45 passed"
+        "result": "49 passed"
       },
       {
-        "cmd": "ruff check src tests",
+        "cmd": "ruff check src tests && mypy src",
         "when": "2026-07-23",
-        "result": "clean"
+        "result": "clean; 13 source files"
       },
       {
-        "cmd": "python -m mypy src",
+        "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "no issues in 12 source files"
-      },
-      {
-        "cmd": "idr-intelligence demo --samples 80 --epochs 3",
-        "when": "2026-07-23",
-        "result": "scenario_generalization: v0-trained hybrid Brier degrades 0.128->0.335 on distractor, 0.202 split_host, 0.195 hash_rotation; ROC still saturated at n=20/scenario"
+        "result": "suite v1 passed, 0 violations (~4s runtime)"
       }
     ],
     "tests": [
-      "tests: 45 \u2014 adds v0_easy semantic back-compat, per-scenario invariants (split-host infra linking, low-and-slow 480x stretch, hash rotation, legit_update hard-negative semantics, truncation prefixes, distractor noise), scenario determinism, generalization table shape"
+      "tests: 49 \u2014 adds benchmark pass + doctored-floor violation detection, drift snapshot flags delta_seconds_log on low_and_slow while staying quiet in-distribution, drift None without snapshot"
     ],
     "benchmarks": [
       {
@@ -326,7 +331,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "Phase 1 merged through PR #12; W6 scenario families implemented \u2014 Phase 2 open; W7 benchmark suite next"
+      "summary": "W6 merged (PR #13); W7 benchmark suite + drift implemented; W8 LabeledWindow ingestion next"
     }
   }
 }

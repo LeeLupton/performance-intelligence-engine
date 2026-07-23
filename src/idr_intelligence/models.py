@@ -125,6 +125,7 @@ class CampaignModel(nn.Module):
         self.graph_head = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, 1))
         self.temperature: torch.Tensor
         self.register_buffer("temperature", torch.ones(1))
+        self.feature_stats: dict | None = None
 
     def calibrated_probability(self, logits: torch.Tensor) -> torch.Tensor:
         """Temperature-scaled probability; T is fitted on validation NLL in training."""
@@ -176,6 +177,7 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
             "use_gnn": model.use_gnn,
             "pooling": model.pooling,
             "manifest": ModelManifest.create(calibration=calibration).to_dict(),
+            "feature_stats": model.feature_stats,
         },
         path,
     )
@@ -208,6 +210,7 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
             pooling=str(payload.get("pooling", _infer_pooling(state_dict))),
         )
         model.load_state_dict(state_dict)
+        model.feature_stats = payload.get("feature_stats")
         return model
     use_s6 = any(key.startswith("temporal.") for key in payload)
     if use_s6:
