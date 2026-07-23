@@ -25,7 +25,9 @@
       "low_and_slow": 0.36,
       "split_host": 0.42,
       "hash_rotation": 0.42,
-      "lateral_movement": 0.42
+      "lateral_movement": 0.42,
+      "stale_preamble": 0.42,
+      "timing_only": 0.45
     }
   }
 }

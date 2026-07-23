@@ -52,7 +52,7 @@
       },
       {
         "module": "src/idr_intelligence/simulator.py",
-        "role": "9 scenario families incl. lateral_movement (identity-only pivot); per-event scenario + stage_index ground truth"
+        "role": "11 scenario families incl. stale_preamble & timing_only (temporal-physics isolation tests); per-event scenario + stage_index ground truth"
       },
       {
         "module": "src/idr_intelligence/training.py",
@@ -242,6 +242,11 @@
         "id": "ADR-24",
         "decision": "W14 structured evidence: the finding keeps its flat top-k for Rust back-compat but adds entity_evidence \u2014 per ranked entity, the events implicating it, typed edges to other ranked entities (graph.py now retains per-pair typed_edges, previously only counted), top-3 features by occlusion attribution (zero each of 22 channels, measure node-logit drop), and ATT&CK techniques from its events. All derived from the existing graph/model, so nothing bypasses the evidence boundary. apply_suppressions attenuates allowlisted entities (exact id or 'prefix:') out of the RANKING only \u2014 campaign probability untouched, finding never hidden from idr-sentinel, applied_suppressions audited",
         "where": "docs/ROADMAP.md W14 \u2014 chosen as best-ROI: completes the actionable-evidence product, dodges the synthetic-benchmark wall that stalled W11/W12"
+      },
+      {
+        "id": "ADR-25",
+        "decision": "Benchmark hardening to validate W11/W12 (user directive 'fix the benchmark first'): added stale_preamble (identical benign preamble ~2 days before the recent window) and timing_only (identical structure/content, ONLY inter-event timing differs) scenarios. FINDING: temporal physics is not empirically differentiated on synthetic data. On timing_only every mode separates at ROC/PR 1.0 and global wins Brier decisively (0.186 vs 0.210) \u2014 the scalar delta_seconds_log feature already encodes timing, so per-entity clock + time-aware S6 + edge decay add variance without signal. Documented in reports/AUDIT.md. Recommends flipping the shipped time_mode default from time_aware to global (simpler + better); deferred to keep this a pure benchmark/doc addition. Validating temporal physics needs real labeled campaigns (--data path), not more synthetic scenarios",
+        "where": "reports/AUDIT.md, docs/ROADMAP.md"
       }
     ]
   },
@@ -265,13 +270,15 @@
       "W10: identity entities (user/session/cloud) + edges + features + lateral_movement scenario \u2014 Phase 2 complete",
       "W11: per-entity time deltas + time-aware S6 discretization + time_ablation (honest verdict: global wins on low_and_slow at demo budget)",
       "W12: time-decayed edges + GraphBudget audited eviction + decay_ablation (honest near-tie on distractor); sparse-mm and replay-wrapper deferred to W15",
-      "W14: structured per-entity evidence (occlusion attribution, typed edges, ATT&CK per entity) + analyst suppression allowlist"
+      "W14: structured per-entity evidence (occlusion attribution, typed edges, ATT&CK per entity) + analyst suppression allowlist",
+      "Benchmark hardening: stale_preamble + timing_only scenarios; VERIFIED temporal physics (W11/W12) undifferentiated on synthetic data (global beats time-aware on timing_only 0.186 vs 0.210); documented in AUDIT.md"
     ],
     "active": [
-      "W13: S6 step() cell refactor (one code path for train/stream/export; prerequisite for W15 streaming + W17 ONNX/Rust)"
+      "DECISION PENDING (user): (a) flip time_mode default to global per the evidence, (b) resume production path W13->W15->W17, (c) declare v0.1 done + consolidate, or (d) invest in real labeled-data validation"
     ],
     "blocked": [
-      "Phase 4: W15 streaming scorer (+ sparse adjacency & replay-wrapper from W12 deferral), W16 campaign identity registry, W17 ONNX + Rust bridge"
+      "Phase 4 (if pursued): W13 S6 step() cell, W15 streaming, W16 campaign identity, W17 ONNX+Rust bridge",
+      "W16 campaign identity registry (independent, usable now)"
     ]
   },
   "evidence": {
@@ -279,7 +286,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "79 passed"
+        "result": "81 passed"
       },
       {
         "cmd": "ruff check src tests && mypy src",
@@ -287,18 +294,23 @@
         "result": "clean; 16 source files"
       },
       {
-        "cmd": "idr-intelligence demo + suppression demo",
+        "cmd": "time-ablation --scenario timing_only --samples 80 --epochs 4",
         "when": "2026-07-23",
-        "result": "entity_evidence carries node prob + typed edges + occlusion top-3 features + ATT&CK; host: suppression removes host from ranking, records it, leaves probability unchanged"
+        "result": "global 0.186 / per_entity 0.210 / time_aware 0.210 \u2014 global wins decisively; delta feature already captures timing"
+      },
+      {
+        "cmd": "decay-ablation --scenario stale_preamble --samples 80 --epochs 4",
+        "when": "2026-07-23",
+        "result": "none 0.2286 / 1h 0.2279 / 15m 0.2278 \u2014 decay marginal win, directionally correct"
       },
       {
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
-        "result": "passed, 0 violations (finding-shape change does not affect training/eval)"
+        "result": "passed incl. new stale_preamble/timing_only floors, 0 violations"
       }
     ],
     "tests": [
-      "tests: 79 \u2014 adds structured entity-evidence shape + ATT&CK surfacing, suppression attenuates-ranking-not-finding + prefix matching, occlusion attribution shape, typed-edge retention"
+      "tests: 81 \u2014 adds stale_preamble preamble-span + timing_only identical-structure/timing-only-differs assertions"
     ],
     "benchmarks": [
       {
@@ -373,7 +385,7 @@
     "uncertainty": [
       "No real labeled campaigns yet (W8 path exists); production accuracy unknown",
       "Homogeneous message passing; typed variant deferred until split-host evasion can falsify it",
-      "Time-awareness (W11) and edge-decay (W12) both correct and tested but do not beat baselines on synthetic scenarios at demo budget \u2014 the simulator lacks a true stale-preamble; real timing distributions or more epochs needed to show value"
+      "VERIFIED via timing_only (identical structure, timing-only discriminator): temporal physics (W11/W12) add no measurable value on synthetic data because the scalar delta feature already captures timing; global time_mode beats time_aware. The machinery is architecturally correct but needs real multi-entity streams to prove out (--data path). See reports/AUDIT.md"
     ]
   },
   "artifacts": [
@@ -400,11 +412,11 @@
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:c86db77-plus-w14",
+    "source_digest": "git:1f44a5c-plus-benchmark-hardening",
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W14 structured evidence + suppression shipped (best-ROI pick: actionable analyst output, immune to the synthetic wall); 13/14 workstreams; W13 S6 step() cell next toward the production path"
+      "summary": "Fixed the benchmark per user directive: added stale_preamble+timing_only, VERIFIED temporal physics undifferentiated on synthetic (global beats time-aware). Documented in AUDIT. Decision pending on direction (default flip / production path / declare v0.1 done)"
     }
   }
 }
