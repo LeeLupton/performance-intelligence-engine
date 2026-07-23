@@ -21,6 +21,7 @@ def main() -> None:
     demo = subparsers.add_parser("demo", help="run ablations and emit a synthetic campaign finding")
     demo.add_argument("--samples", type=int, default=80)
     demo.add_argument("--epochs", type=int, default=3)
+    demo.add_argument("--malicious-rate", type=float, default=0.5)
     demo.add_argument("--output", default="reports/demo.json")
 
     score = subparsers.add_parser("score", help="score newline-delimited IdrEvent JSON")
@@ -29,7 +30,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "demo":
-        report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output)
+        report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate)
         model = load_campaign_model("artifacts/hybrid_model.pt")
         finding = score_events(simulate_campaign(1, 999), model, model_version="synthetic-demo-v0.1")
         print(json.dumps({"benchmark": report, "finding": finding.to_dict()}, indent=2))

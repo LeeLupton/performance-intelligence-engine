@@ -162,6 +162,11 @@
         "id": "ADR-13",
         "decision": "Temperature calibration fitted by validation-NLL grid search with T=1 always in the grid, making 'post-scaling validation NLL never worsens' a hard CI-assertable guarantee (the roadmap's ECE<=pre wording is not guaranteeable by NLL fitting). Findings report raw + calibrated probability + calibration string; ECE/log-loss/MCE added to ablation metrics",
         "where": "docs/ROADMAP.md W3"
+      },
+      {
+        "id": "ADR-14",
+        "decision": "Dataset labels are seeded random draws with a deterministic retry guaranteeing both classes in every chronological segment (the former index%2 alternation leaked parity across split boundaries); _fit weights BCE by neg/pos, calibration stays unweighted so probabilities match true frequencies; _evaluate adds recall@FPR{1%,0.1%} and precision@5",
+        "where": "docs/ROADMAP.md W4"
       }
     ]
   },
@@ -174,13 +179,14 @@
       "Adversarial diff verification of PR #6 (19 agents): 4 distinct upheld findings, all fixed in the W1 slice (variant round-trip, legacy-shape test, vacuous order-invariance test, roundtrip weight fidelity)",
       "W1: attention-gated pooling + evidence_precision_at_5 metric + fifth ablation arm",
       "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml, provenance fields on findings, schema-hash rejection on load)",
-      "W3: temperature calibration (validation-NLL grid, T buffer in state_dict, manifest calibration string) + ECE/log-loss/MCE metrics + raw/calibrated finding fields"
+      "W3: temperature calibration (validation-NLL grid, T buffer in state_dict, manifest calibration string) + ECE/log-loss/MCE metrics + raw/calibrated finding fields",
+      "W4: seeded random labels + pos_weight + recall@FPR and precision@k operating-point metrics; CLI --malicious-rate"
     ],
     "active": [
-      "W4: honest operating-point evaluation \u2014 malicious_rate labels replacing the leaky 50/50 parity alternation, pos_weight in _fit, recall@FPR{0.01,0.001} and precision@k metrics"
+      "W5: ATT&CK-native next-stage mapping \u2014 kind->technique/tactic table, timestamp-ordered observed_attack_stages, next unobserved kill-chain tactic (closes Phase 1)"
     ],
     "blocked": [
-      "Phase 1 remainder: W5 ATT&CK mapping",
+      "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
@@ -191,7 +197,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "30 passed"
+        "result": "33 passed"
       },
       {
         "cmd": "ruff check src tests",
@@ -204,13 +210,13 @@
         "result": "no issues in 11 source files"
       },
       {
-        "cmd": "idr-intelligence demo --samples 80 --epochs 3 (calibrated)",
+        "cmd": "idr-intelligence demo --samples 80 --epochs 3 --malicious-rate 0.25",
         "when": "2026-07-23",
-        "result": "T=0.1995 (grid edge; demo models underconfident at 3 epochs); Brier improves every arm, s6_gnn 0.2159 -> 0.1279"
+        "result": "imbalanced end-to-end pass; v0_easy still saturates recall@FPR and p@5 at 1.0 as the roadmap predicted (W6 exists to fix this)"
       }
     ],
     "tests": [
-      "tests: 30 \u2014 adds temperature-fit NLL non-worsening guarantee, calibration-error correctness on perfect/inverted toys, temperature round-trip + pre-temperature checkpoint default, raw-vs-calibrated finding fields"
+      "tests: 33 \u2014 adds split-safe random-label determinism, recall@FPR/precision@k toy correctness, imbalanced ablation smoke"
     ],
     "benchmarks": [
       {
@@ -290,7 +296,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "W2 merged (PR #9); W3 calibration implemented; W4 operating-point eval is next"
+      "summary": "W3 merged (PR #10); W4 operating-point evaluation implemented; W5 ATT&CK mapping closes Phase 1 next"
     }
   }
 }

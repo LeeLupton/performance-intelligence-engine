@@ -194,6 +194,38 @@ def test_finding_carries_provenance():
     assert len(finding.related_entities) <= DEFAULT_CONFIG.scoring.top_k
 
 
+def test_labels_are_random_but_split_safe():
+    from idr_intelligence.training import _draw_labels
+
+    labels = _draw_labels(40, seed=7, malicious_rate=0.3)
+    assert not np.array_equal(labels, np.arange(40) % 2 == 1)
+    for start, end in ((0, 24), (24, 32), (32, 40)):
+        segment = labels[start:end]
+        assert 0 < segment.sum() < end - start
+    assert np.array_equal(labels, _draw_labels(40, seed=7, malicious_rate=0.3))
+
+
+def test_operating_point_metrics_on_toys():
+    from idr_intelligence.training import _precision_at_k, _recall_at_fpr
+
+    labels = np.array([0.0, 0.0, 0.0, 1.0, 1.0])
+    perfect = np.array([0.1, 0.2, 0.3, 0.8, 0.9])
+    assert _recall_at_fpr(labels, perfect, 0.01) == 1.0
+    assert _precision_at_k(labels, perfect, 2) == 1.0
+    inverted = 1.0 - perfect
+    assert _recall_at_fpr(labels, inverted, 0.01) == 0.0
+    assert _precision_at_k(labels, inverted, 2) == 0.0
+
+
+def test_ablation_runs_imbalanced(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    report = train_ablation(samples=24, epochs=1, seed=11, malicious_rate=0.3)
+    assert report["malicious_rate"] == 0.3
+    row = report["metrics"]["s6_gnn"]
+    for key in ("recall_at_fpr_1pct", "recall_at_fpr_0p1pct", "precision_at_5"):
+        assert 0.0 <= row[key] <= 1.0
+
+
 def test_temperature_fit_never_worsens_validation_nll():
     from idr_intelligence.training import _fit_temperature, chronological_split
 

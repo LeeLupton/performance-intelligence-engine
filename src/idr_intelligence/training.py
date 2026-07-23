@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 import torch
-from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score
+from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score, roc_curve
 from torch import nn
 
 from .config import DEFAULT_CONFIG
@@ -41,16 +41,24 @@ def set_seed(seed: int) -> None:
     torch.set_num_threads(1)
 
 
-def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps) -> Batch:
-    """Simulate alternating benign/malicious campaigns and pad them into one Batch."""
+def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps, malicious_rate: float = 0.5) -> Batch:
+    """Simulate benign/malicious campaigns with seeded random labels and pad into one Batch.
+
+    Labels are drawn per-sample (not the former index%2 alternation, which
+    leaked parity structure across chronological split boundaries), with a
+    deterministic retry so every chronological segment contains both classes.
+    """
     if samples < 20:
         raise ValueError("samples must be at least 20")
+    if not 0.0 < malicious_rate < 1.0:
+        raise ValueError("malicious_rate must be strictly between 0 and 1")
+    label_row = _draw_labels(samples, seed, malicious_rate)
     sequences = np.zeros((samples, max_nodes, max_steps, FEATURE_DIM), dtype=np.float32)
     mask = np.zeros((samples, max_nodes, max_steps), dtype=np.float32)
     adjacency = np.zeros((samples, max_nodes, max_nodes), dtype=np.float32)
     labels = []
     for index in range(samples):
-        label = int(index % 2 == 1)
+        label = int(label_row[index])
         graph = build_temporal_graph(simulate_campaign(label, seed + index), max_steps=max_steps)
         count = min(graph.node_count, max_nodes)
         sequences[index, :count] = graph.sequences[:count]
@@ -62,6 +70,18 @@ def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONF
     return Batch(torch.from_numpy(sequences), torch.from_numpy(mask), torch.from_numpy(adjacency), torch.tensor(labels))
 
 
+def _draw_labels(samples: int, seed: int, malicious_rate: float) -> np.ndarray:
+    """Seeded label draw, deterministically retried until every split segment has both classes."""
+    train_end, validation_end = int(samples * 0.60), int(samples * 0.80)
+    segments = ((0, train_end), (train_end, validation_end), (validation_end, samples))
+    rng = np.random.default_rng(seed + 104729)
+    for _ in range(1000):
+        labels = rng.random(samples) < malicious_rate
+        if all(0 < labels[start:end].sum() < end - start for start, end in segments):
+            return labels
+    raise ValueError(f"could not draw two-class segments at malicious_rate={malicious_rate} with {samples} samples")
+
+
 def chronological_split(batch: Batch) -> tuple[Batch, Batch, Batch]:
     """Split 60/20/20 by sample index, which the simulator orders by start time."""
     size = len(batch.labels)
@@ -69,10 +89,10 @@ def chronological_split(batch: Batch) -> tuple[Batch, Batch, Batch]:
     return _slice(batch, 0, train_end), _slice(batch, train_end, validation_end), _slice(batch, validation_end, size)
 
 
-def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None) -> dict:
-    """Train all four variants under one split, save the hybrid, return the report."""
+def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: str | None = None, malicious_rate: float = 0.5) -> dict:
+    """Train every ablation variant under one split, save the hybrid, return the report."""
     set_seed(seed)
-    train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed))
+    train, validation, test = chronological_split(make_dataset(samples=samples, seed=seed, malicious_rate=malicious_rate))
     variants: dict[str, dict[str, Any]] = {
         "static_baseline": {"use_s6": False, "use_gnn": False},
         "s6_only": {"use_s6": True, "use_gnn": False},
@@ -90,6 +110,7 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
         evidence_precision[name] = evidence_precision_at_5(model, evidence_seeds)
     report = {
         "problem": "predict campaign escalation from ordered IdrEvent histories and entity relationships",
+        "malicious_rate": malicious_rate,
         "split": {"train": len(train.labels), "validation": len(validation.labels), "test": len(test.labels)},
         "metrics": results,
         "evidence_precision_at_5": evidence_precision,
@@ -108,7 +129,9 @@ def train_ablation(samples: int = 80, epochs: int = 3, seed: int = 7, output: st
 
 def _fit(model: CampaignModel, train: Batch, validation: Batch, epochs: int) -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
-    loss_fn = nn.BCEWithLogitsLoss()
+    positives = train.labels.sum().clamp_min(1.0)
+    negatives = (len(train.labels) - train.labels.sum()).clamp_min(1.0)
+    loss_fn = nn.BCEWithLogitsLoss(pos_weight=negatives / positives)
     best_loss, best_state = float("inf"), None
     for _ in range(epochs):
         model.train()
@@ -181,7 +204,24 @@ def _evaluate(model: CampaignModel, batch: Batch) -> dict[str, float]:
         "ece": round(ece, 6),
         "max_calibration_error": round(mce, 6),
         "temperature": round(float(model.temperature.item()), 6),
+        "recall_at_fpr_1pct": round(_recall_at_fpr(labels, probability, 0.01), 6),
+        "recall_at_fpr_0p1pct": round(_recall_at_fpr(labels, probability, 0.001), 6),
+        "precision_at_5": round(_precision_at_k(labels, probability, 5), 6),
     }
+
+
+def _recall_at_fpr(labels: np.ndarray, probability: np.ndarray, max_fpr: float) -> float:
+    """Highest TPR achievable while keeping FPR at or below max_fpr."""
+    fpr, tpr, _ = roc_curve(labels, probability)
+    admissible = tpr[fpr <= max_fpr]
+    return float(admissible.max()) if admissible.size else 0.0
+
+
+def _precision_at_k(labels: np.ndarray, probability: np.ndarray, k: int) -> float:
+    """Fraction of the k highest-scored samples that are truly malicious."""
+    k = min(k, len(labels))
+    top = np.argsort(-probability)[:k]
+    return float(labels[top].mean())
 
 
 def _calibration_errors(labels: np.ndarray, probability: np.ndarray, bins: int = 15) -> tuple[float, float]:
