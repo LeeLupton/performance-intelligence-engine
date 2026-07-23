@@ -1,12 +1,14 @@
 import json
-from datetime import timezone
+from datetime import datetime, timezone
 
 import numpy as np
 import pytest
 import torch
 
 from idr_intelligence import cli
+from idr_intelligence.config import DEFAULT_CONFIG, ENGINE_VERSION, load_config
 from idr_intelligence.features import FEATURE_DIM
+from idr_intelligence.registry import ModelManifest, SchemaMismatchError, feature_schema_hash
 from idr_intelligence.graph import build_temporal_graph
 from idr_intelligence.models import CampaignModel, load_campaign_model, save_checkpoint
 from idr_intelligence.pipeline import score_events
@@ -141,6 +143,55 @@ def test_legacy_raw_state_dict_still_loads(tmp_path):
     assert loaded.feature_dim == FEATURE_DIM
     assert loaded.pooling == "uniform"
     torch.testing.assert_close(dict(loaded.state_dict())["node_head.weight"], legacy["node_head.weight"])
+
+
+def test_default_toml_reproduces_default_config():
+    loaded = load_config("configs/default.toml")
+    assert loaded == DEFAULT_CONFIG
+    assert loaded.config_hash() == DEFAULT_CONFIG.config_hash()
+
+
+def test_config_hash_tracks_content():
+    from idr_intelligence.config import EngineConfig, ModelConfig
+
+    assert EngineConfig().config_hash() == EngineConfig().config_hash()
+    assert EngineConfig(model=ModelConfig(hidden_dim=99)).config_hash() != EngineConfig().config_hash()
+
+
+def test_checkpoint_manifest_guards_feature_schema(tmp_path):
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    path = tmp_path / "model.pt"
+    save_checkpoint(model, path)
+    payload = torch.load(path, weights_only=True)
+    manifest = ModelManifest.from_dict(payload["manifest"])
+    assert manifest.engine_version == ENGINE_VERSION
+    assert manifest.feature_schema_hash == feature_schema_hash()
+    assert load_campaign_model(path) is not None
+    payload["manifest"]["feature_schema_hash"] = "0" * 32
+    tampered = tmp_path / "tampered.pt"
+    torch.save(payload, tampered)
+    with pytest.raises(SchemaMismatchError, match="feature schema"):
+        load_campaign_model(tampered)
+
+
+def test_manifestless_checkpoint_still_loads(tmp_path):
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    path = tmp_path / "v3.pt"
+    save_checkpoint(model, path)
+    payload = torch.load(path, weights_only=True)
+    del payload["manifest"]
+    torch.save(payload, path)
+    loaded = load_campaign_model(path)
+    assert loaded.pooling == "attention"
+
+
+def test_finding_carries_provenance():
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    finding = score_events(simulate_campaign(label=1, seed=8), model)
+    assert finding.engine_version == ENGINE_VERSION
+    assert finding.feature_schema_hash == feature_schema_hash()
+    assert datetime.fromisoformat(finding.scored_at).tzinfo is not None
+    assert len(finding.related_entities) <= DEFAULT_CONFIG.scoring.top_k
 
 
 def test_attention_ranking_receives_training_gradient():

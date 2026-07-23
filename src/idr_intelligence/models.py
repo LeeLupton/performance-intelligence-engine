@@ -155,7 +155,9 @@ class CampaignModel(nn.Module):
 
 
 def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
-    """Persist weights plus everything needed to rebuild the exact model variant."""
+    """Persist weights, the exact model variant, and a provenance manifest."""
+    from .registry import ModelManifest
+
     torch.save(
         {
             "state_dict": model.state_dict(),
@@ -165,6 +167,7 @@ def save_checkpoint(model: CampaignModel, path: str | Path) -> None:
             "use_s6": model.use_s6,
             "use_gnn": model.use_gnn,
             "pooling": model.pooling,
+            "manifest": ModelManifest.create().to_dict(),
         },
         path,
     )
@@ -178,9 +181,13 @@ def load_campaign_model(path: str | Path) -> CampaignModel:
     are inferred from tensor shapes/keys, and weights of the formerly
     always-constructed (but unused) static branch are dropped for S6 models.
     """
+    from .registry import ModelManifest
+
     payload = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(payload, dict):
         raise ValueError(f"unrecognized checkpoint format in {path}: expected a dict payload")
+    if "manifest" in payload:
+        ModelManifest.from_dict(payload["manifest"]).verify_feature_schema()
     if "state_dict" in payload:
         state_dict = payload["state_dict"]
         model = CampaignModel(

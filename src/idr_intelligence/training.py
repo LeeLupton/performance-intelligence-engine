@@ -13,13 +13,14 @@ import torch
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from torch import nn
 
+from .config import DEFAULT_CONFIG
 from .features import FEATURE_DIM
 from .graph import build_temporal_graph
 from .models import CampaignModel, save_checkpoint
 from .simulator import simulate_campaign
 
-HIDDEN_DIM = 24
-STATE_DIM = 6
+HIDDEN_DIM = DEFAULT_CONFIG.model.hidden_dim
+STATE_DIM = DEFAULT_CONFIG.model.state_dim
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ def set_seed(seed: int) -> None:
     torch.set_num_threads(1)
 
 
-def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = 24, max_steps: int = 16) -> Batch:
+def make_dataset(samples: int = 80, seed: int = 7, max_nodes: int = DEFAULT_CONFIG.graph.train_max_nodes, max_steps: int = DEFAULT_CONFIG.graph.train_max_steps) -> Batch:
     """Simulate alternating benign/malicious campaigns and pad them into one Batch."""
     if samples < 20:
         raise ValueError("samples must be at least 20")

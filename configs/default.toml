@@ -1,0 +1,15 @@
+# Canonical engine configuration — must reproduce config.DEFAULT_CONFIG exactly
+# (tests/test_system.py enforces the no-op guarantee).
+
+[model]
+hidden_dim = 24
+state_dim = 6
+pooling = "attention"
+
+[graph]
+score_max_steps = 24
+train_max_steps = 16
+train_max_nodes = 24
+
+[scoring]
+top_k = 5

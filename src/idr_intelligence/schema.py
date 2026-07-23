@@ -6,28 +6,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-SEVERITY_WEIGHT = {
-    "INFO": 0.05,
-    "WARNING": 0.25,
-    "HIGH": 0.65,
-    "CRITICAL": 0.85,
-    "IMPOSSIBLE": 1.0,
-}
+from .config import DEFAULT_KIND_PRIOR, DEFAULT_SEVERITY_WEIGHT
 
-KIND_PRIOR = {
-    "socket_lineage": 0.12,
-    "suspicious_beacon": 0.72,
-    "physics_anomaly": 0.68,
-    "octet_reversal_detected": 0.74,
-    "ntp_time_shift": 0.42,
-    "hsts_time_manipulation": 0.78,
-    "nvme_latency_anomaly": 0.52,
-    "mac_flapping": 0.64,
-    "rtc_clock_divergence": 0.38,
-    "triage_classification": 0.60,
-    "bgp_anomaly": 0.48,
-    "impossible_state": 1.0,
-}
+SEVERITY_WEIGHT = DEFAULT_SEVERITY_WEIGHT
+KIND_PRIOR = DEFAULT_KIND_PRIOR
 
 
 @dataclass(frozen=True)

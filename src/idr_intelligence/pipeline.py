@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 
 import numpy as np
 import torch
 
+from .config import DEFAULT_CONFIG, ENGINE_VERSION
 from .graph import build_temporal_graph
 from .models import CampaignModel
+from .registry import feature_schema_hash
 from .schema import IdrEvent
 
 
@@ -24,12 +27,21 @@ class IntelligenceFinding:
     model_version: str
     graph_nodes: int
     graph_relations: dict[str, int]
+    engine_version: str
+    feature_schema_hash: str
+    scored_at: str
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-def score_events(events: list[IdrEvent], model: CampaignModel, model_version: str = "development", max_steps: int = 24) -> IntelligenceFinding:
+def score_events(
+    events: list[IdrEvent],
+    model: CampaignModel,
+    model_version: str = "development",
+    max_steps: int = DEFAULT_CONFIG.graph.score_max_steps,
+    top_k: int = DEFAULT_CONFIG.scoring.top_k,
+) -> IntelligenceFinding:
     """Score one event set and return a finding with ranked entities and evidence."""
     graph = build_temporal_graph(events, max_steps=max_steps)
     first = min(events, key=lambda event: (event.timestamp, event.id))
@@ -41,7 +53,7 @@ def score_events(events: list[IdrEvent], model: CampaignModel, model_version: st
         output = model(sequence, mask, adjacency)
         probability = torch.sigmoid(output.graph_logit)[0].item()
         node_probability = torch.sigmoid(output.node_logits)[0].cpu().numpy()
-    ranked = np.argsort(-node_probability)[: min(5, graph.node_count)]
+    ranked = np.argsort(-node_probability)[: min(top_k, graph.node_count)]
     related = tuple(graph.node_ids[index] for index in ranked)
     evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in graph.evidence_ids[index]))
     return IntelligenceFinding(
@@ -53,6 +65,9 @@ def score_events(events: list[IdrEvent], model: CampaignModel, model_version: st
         model_version=model_version,
         graph_nodes=graph.node_count,
         graph_relations=graph.relation_counts,
+        engine_version=ENGINE_VERSION,
+        feature_schema_hash=feature_schema_hash(),
+        scored_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
