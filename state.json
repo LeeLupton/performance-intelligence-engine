@@ -65,6 +65,14 @@
       {
         "module": "src/idr_intelligence/cli.py",
         "role": "demo + NDJSON score commands"
+      },
+      {
+        "module": "src/idr_intelligence/config.py",
+        "role": "EngineConfig: typed single home for tunables + prior tables + config hash + TOML loader"
+      },
+      {
+        "module": "src/idr_intelligence/registry.py",
+        "role": "ModelManifest, feature_schema_hash, SchemaMismatchError"
       }
     ],
     "interfaces": [
@@ -75,8 +83,8 @@
       },
       {
         "name": "checkpoint",
-        "version": "v3",
-        "contract": "dict {state_dict, feature_dim, hidden_dim, state_dim, use_s6, use_gnn, pooling}; v2 dicts lacking flags default to hybrid with pooling inferred from keys; v1 raw state dicts infer everything from tensor shapes/keys and load as pooling=uniform"
+        "version": "v4",
+        "contract": "v3 fields + manifest {engine_version, feature_schema_hash, config_hash, created_at, calibration}; loader raises SchemaMismatchError when the manifest's feature schema disagrees with the runtime; manifestless v2/v3 and raw v1 checkpoints still load"
       },
       {
         "name": "TemporalGraph",
@@ -85,8 +93,8 @@
       },
       {
         "name": "IntelligenceFinding",
-        "version": "v1",
-        "contract": "see outputs; predicted_next_stage is a heuristic lookup, not learned"
+        "version": "v2",
+        "contract": "v1 fields + engine_version, feature_schema_hash, scored_at; mirrored in the Rust EventKind sketch so idr-sentinel can reject stale-model findings"
       }
     ],
     "decisions": [
@@ -144,6 +152,11 @@
         "id": "ADR-11",
         "decision": "Checkpoints persist ablation flags and pooling mode so every trained variant round-trips (verify-workflow finding); non-dict payloads rejected with a clear error",
         "where": "models.py save_checkpoint/load_campaign_model"
+      },
+      {
+        "id": "ADR-12",
+        "decision": "All tunables live in config.EngineConfig (TOML-loadable, hashable); prior tables moved to config with schema.py re-export; ENGINE_VERSION defined in config to avoid the __init__ import cycle. Checkpoints embed a ModelManifest and refuse to load across feature-schema changes",
+        "where": "docs/ROADMAP.md W2"
       }
     ]
   },
@@ -154,13 +167,14 @@
       "state.json bootstrap (this slice)",
       "Design roadmap synthesized and committed (docs/ROADMAP.md); state task graph now mirrors it",
       "Adversarial diff verification of PR #6 (19 agents): 4 distinct upheld findings, all fixed in the W1 slice (variant round-trip, legacy-shape test, vacuous order-invariance test, roundtrip weight fidelity)",
-      "W1: attention-gated pooling + evidence_precision_at_5 metric + fifth ablation arm"
+      "W1: attention-gated pooling + evidence_precision_at_5 metric + fifth ablation arm",
+      "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml, provenance fields on findings, schema-hash rejection on load)"
     ],
     "active": [
-      "W2: EngineConfig + ModelManifest (config.py, registry.py, configs/default.toml; schema-hash rejection on load)"
+      "W3: calibration layer (temperature scaling on validation NLL, stored in the manifest) + ECE/log-loss/reliability metrics; CI asserts post-scaling ECE <= pre-scaling"
     ],
     "blocked": [
-      "Phase 1 remainder: W3 calibration+ECE (after W2 manifest), W4 operating-point eval, W5 ATT&CK mapping",
+      "Phase 1 remainder: W4 operating-point eval, W5 ATT&CK mapping",
       "Phase 2 (gates phases 3-4): W6 graded/adversarial simulator, W7 benchmark suite+drift, W8 LabeledWindow ingestion, W9 rolling-origin CV, W10 identity entities",
       "Phase 3: W11 per-entity time deltas, W12 bounded decayed sparse graph, W13 S6 step() cell, W14 structured evidence+suppression",
       "Phase 4: W15 streaming scorer, W16 campaign identity registry (independent, can start post-Phase-1), W17 ONNX+Rust bridge"
@@ -171,7 +185,7 @@
       {
         "cmd": "python -m pytest -q",
         "when": "2026-07-23",
-        "result": "21 passed"
+        "result": "26 passed"
       },
       {
         "cmd": "ruff check src tests",
@@ -181,21 +195,16 @@
       {
         "cmd": "python -m mypy src",
         "when": "2026-07-23",
-        "result": "no issues in 9 source files"
+        "result": "no issues in 11 source files"
       },
       {
-        "cmd": "idr-intelligence demo --samples 80 --epochs 3 (attention pooling)",
+        "cmd": "idr-intelligence demo --samples 20 --epochs 1",
         "when": "2026-07-23",
-        "result": "5-arm ablation + evidence_precision_at_5 + finding, end-to-end pass"
-      },
-      {
-        "cmd": "gradient probe: BCE(graph_logit).backward(); node_head.weight.grad",
-        "when": "2026-07-23",
-        "result": "None on pre-W1 model \u2014 confirmed untrained ranking defect"
+        "result": "finding carries engine_version/feature_schema_hash/scored_at; checkpoint manifest matches runtime hash e810c7e43117"
       }
     ],
     "tests": [
-      "tests/test_system.py + tests/test_state_record.py: 21 tests \u2014 adds attention-gradient proof, all-variant checkpoint round-trip with output equality, true legacy-shape load (injected static.* keys), non-vacuous campaign_id order-invariance (distinct id prefixes), roundtrip weight fidelity"
+      "tests: 26 \u2014 adds default.toml==DEFAULT_CONFIG no-op guarantee, config-hash content tracking, manifest schema-mismatch rejection, manifestless back-compat, finding provenance fields"
     ],
     "benchmarks": [
       {
@@ -260,7 +269,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-23",
-      "summary": "Roadmap adopted; W1 attention pooling shipped with verify-workflow fixes folded in; W2 (EngineConfig+Manifest) is next"
+      "summary": "W1 merged (PR #8); W2 EngineConfig+ModelManifest implemented; W3 calibration is next"
     }
   }
 }

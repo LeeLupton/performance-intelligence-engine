@@ -25,7 +25,16 @@ EventKind::IntelligenceFinding {
     related_entities: Vec<String>,
     evidence_event_ids: Vec<Uuid>,
     model_version: String,
+    engine_version: String,
+    feature_schema_hash: String,
+    scored_at: DateTime<Utc>,
 }
 ```
+
+`feature_schema_hash` identifies the exact feature semantics (names plus prior
+tables) the scoring model was trained under; `idr-sentinel` can deterministically
+reject findings whose hash disagrees with the deployed engine's manifest. The
+same hash is embedded in every checkpoint, and `load_campaign_model` refuses a
+checkpoint whose manifest disagrees with the runtime (`SchemaMismatchError`).
 
 The current repository is the reproducible development and ablation environment. Production deployment still requires real labeled campaigns, timestamp-versioned graph snapshots, calibration, and a Rust or ONNX inference adapter.
