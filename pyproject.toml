@@ -30,6 +30,10 @@ warn_unused_ignores = true
 module = "sklearn.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "onnxruntime.*"
+ignore_missing_imports = true
+
 [tool.ruff.lint]
 # Explicit selection so a distro ruff upgrade cannot silently change what CI
 # enforces (an Arch ruff bump once broke CI on rules this repo never chose).

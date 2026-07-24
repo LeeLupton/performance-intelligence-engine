@@ -187,7 +187,8 @@ class StreamingScorer:
             probability = self.model.calibrated_probability(output.graph_logit)[0].item()
             node_probability = torch.sigmoid(output.node_logits[0]).cpu().numpy()
         ranking_scores, applied_suppressions = apply_suppressions(node_ids, node_probability, suppressions or [])
-        ranked = np.argsort(-ranking_scores)[: min(top_k, len(node_ids))]
+        # Stable sort so exact ties rank in first-seen order — see score_events.
+        ranked = np.argsort(-ranking_scores, kind="stable")[: min(top_k, len(node_ids))]
         ranked = np.array([index for index in ranked if np.isfinite(ranking_scores[index])], dtype=int)
         related = tuple(node_ids[index] for index in ranked)
         evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in self.entities[node_ids[index]].evidence_ids))

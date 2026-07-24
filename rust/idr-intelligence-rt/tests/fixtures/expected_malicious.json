@@ -1,0 +1,117 @@
+{
+  "campaign_id": "idr-campaign-00000000",
+  "escalation_probability": 0.464581,
+  "raw_escalation_probability": 0.512851,
+  "calibration": "affine:scale=0.740741,bias=-0.180000",
+  "predicted_next_stage": "impact",
+  "observed_attack_stages": [
+    {
+      "tactic": "execution",
+      "technique": "T1059",
+      "kind_type": "socket_lineage",
+      "first_event_id": "00000000-0000-0000-0000-00000000019a"
+    },
+    {
+      "tactic": "collection",
+      "technique": "T1557",
+      "kind_type": "bgp_anomaly",
+      "first_event_id": "00000000-0000-0000-0000-000000000192"
+    },
+    {
+      "tactic": "command-and-control",
+      "technique": "T1071",
+      "kind_type": "suspicious_beacon",
+      "first_event_id": "00000000-0000-0000-0000-000000000193"
+    },
+    {
+      "tactic": "defense-evasion",
+      "technique": "T1562",
+      "kind_type": "ntp_time_shift",
+      "first_event_id": "00000000-0000-0000-0000-000000000194"
+    },
+    {
+      "tactic": "credential-access",
+      "technique": "T1557",
+      "kind_type": "hsts_time_manipulation",
+      "first_event_id": "00000000-0000-0000-0000-000000000195"
+    },
+    {
+      "tactic": "exfiltration",
+      "technique": "T1041",
+      "kind_type": "nvme_latency_anomaly",
+      "first_event_id": "00000000-0000-0000-0000-000000000196"
+    }
+  ],
+  "related_entities": [
+    "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+    "ip:198.51.100.12",
+    "domain:update-cdn.example",
+    "hash:0badf00d0000000000000000000000000000000000000000000000000000000b",
+    "ip:203.0.113.24"
+  ],
+  "entity_evidence": [],
+  "applied_suppressions": [],
+  "evidence_event_ids": [
+    "00000000-0000-0000-0000-00000000019a",
+    "00000000-0000-0000-0000-000000000199",
+    "00000000-0000-0000-0000-000000000198",
+    "00000000-0000-0000-0000-000000000197",
+    "00000000-0000-0000-0000-000000000453",
+    "00000000-0000-0000-0000-000000000195",
+    "00000000-0000-0000-0000-000000000325",
+    "00000000-0000-0000-0000-000000000451",
+    "00000000-0000-0000-0000-000000000454",
+    "00000000-0000-0000-0000-000000000455",
+    "00000000-0000-0000-0000-000000000191",
+    "00000000-0000-0000-0000-000000000192",
+    "00000000-0000-0000-0000-000000000193",
+    "00000000-0000-0000-0000-000000000194"
+  ],
+  "model_version": "fixture-v1",
+  "graph_nodes": 46,
+  "graph_relations": {
+    "executes": 13,
+    "identified_by": 13,
+    "connects_to": 22,
+    "belongs_to": 3,
+    "originated_by": 6,
+    "resolves_or_connects": 3,
+    "queries_or_visits": 3,
+    "contains": 3,
+    "authenticates_to": 6,
+    "owns": 2
+  },
+  "engine_version": "0.1.0",
+  "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
+  "scored_at": "2026-07-24T03:54:16.578290+00:00",
+  "feature_drift": {
+    "psi_max": 12.378141,
+    "psi_mean": 10.384174,
+    "flagged_features": [
+      "severity",
+      "kind_prior",
+      "delta_seconds_log",
+      "has_process",
+      "unsigned_process",
+      "has_ip",
+      "has_hash",
+      "has_domain",
+      "has_asn_or_prefix",
+      "has_hardware",
+      "concurrent_exfil",
+      "production_bgp_anomaly",
+      "source_kernel",
+      "source_network",
+      "source_hardware",
+      "source_correlation",
+      "kind_hash_0",
+      "kind_hash_1",
+      "kind_hash_2",
+      "kind_hash_3",
+      "has_user",
+      "has_identity_pivot"
+    ]
+  },
+  "continues_campaign": false,
+  "windows_observed": 1
+}

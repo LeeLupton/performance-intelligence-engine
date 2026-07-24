@@ -1,0 +1,18 @@
+[package]
+name = "idr-intelligence-rt"
+description = "Rust serving bridge for idr-intelligence ONNX export bundles"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+# Standalone workspace: this crate builds without the Python package or the
+# idr-main tree. The machine-local integration crate rust/idr-common-parity
+# proves wire compatibility against the real idr_common types.
+[workspace]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tract-onnx = "0.23"
+blake2 = "0.10"

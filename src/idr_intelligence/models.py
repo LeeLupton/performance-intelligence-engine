@@ -142,7 +142,10 @@ class GatedAttentionPool(nn.Module):
     def forward(self, nodes: torch.Tensor, active: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         scores = self.score(torch.tanh(self.value(nodes)) * torch.sigmoid(self.gate(nodes))).squeeze(-1)
         weights = torch.softmax(scores.masked_fill(active.squeeze(-1) == 0, float("-inf")), dim=1)
-        weights = torch.nan_to_num(weights, nan=0.0)
+        # NaN (a fully-masked row) -> 0. Same semantics as nan_to_num(nan=0.0):
+        # softmax output is bounded [0,1] so the inf branches were dead code, and
+        # the IsInf op they exported is unsupported by the tract ONNX runtime.
+        weights = torch.where(torch.isnan(weights), torch.zeros_like(weights), weights)
         pooled = (weights.unsqueeze(-1) * nodes).sum(dim=1)
         return pooled, scores
 

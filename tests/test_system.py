@@ -1165,8 +1165,11 @@ def test_streaming_matches_batch_scoring():
         stream = scorer.finding()
         assert stream.escalation_probability == pytest.approx(batch.escalation_probability, abs=1e-4)
         assert stream.raw_escalation_probability == pytest.approx(batch.raw_escalation_probability, abs=1e-4)
-        assert stream.related_entities == batch.related_entities
-        assert stream.evidence_event_ids == batch.evidence_event_ids
+        # Set comparison: structurally identical entities tie exactly, and a
+        # ~1e-8 batch-vs-streaming float difference can break such a tie in one
+        # path only, legitimately permuting tied neighbors under stable ranking.
+        assert set(stream.related_entities) == set(batch.related_entities)
+        assert set(stream.evidence_event_ids) == set(batch.evidence_event_ids)
         assert stream.campaign_id == batch.campaign_id
         assert stream.predicted_next_stage == batch.predicted_next_stage
         assert stream.observed_attack_stages == batch.observed_attack_stages
@@ -1302,3 +1305,163 @@ def test_cli_score_registry_persists_across_invocations(tmp_path, monkeypatch, c
     assert second["campaign_id"] == first["campaign_id"]
     assert (first["continues_campaign"], first["windows_observed"]) == (False, 1)
     assert (second["continues_campaign"], second["windows_observed"]) == (True, 2)
+
+
+def test_attention_pool_fully_masked_row_yields_zero_weights():
+    from idr_intelligence.models import GatedAttentionPool
+
+    pool = GatedAttentionPool(hidden_dim=8)
+    nodes = torch.randn(1, 3, 8)
+    pooled, _ = pool(nodes, torch.zeros(1, 3, 1))
+    assert torch.isfinite(pooled).all()
+    assert torch.count_nonzero(pooled) == 0  # NaN row from all-masked softmax becomes zero weights
+
+
+def _export_bundle(base_dir, model, model_version="test-export"):
+    from idr_intelligence.export import export_streaming_bundle
+
+    out = Path(base_dir) / "bundle"
+    manifest = export_streaming_bundle(model, out, model_version=model_version)
+    return out, manifest
+
+
+def test_export_requires_s6_model(tmp_path):
+    from idr_intelligence.export import export_streaming_bundle
+
+    with pytest.raises(ValueError, match="S6 model"):
+        export_streaming_bundle(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, use_s6=False), tmp_path)
+
+
+def test_export_manifest_matches_runtime(tmp_path):
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode="time_aware", decay_half_life=3600.0)
+    with torch.no_grad():
+        model.temperature.fill_(1.25)
+        model.cal_bias.fill_(-0.2)
+    out, manifest = _export_bundle(tmp_path, model)
+    assert manifest["feature_schema_hash"] == feature_schema_hash()
+    assert manifest["calibration"]["label"] == model.calibration_label()
+    assert manifest["features"]["names"] == list(FEATURE_NAMES)
+    assert manifest["model"]["decay_half_life"] == 3600.0
+    assert manifest["graphs"]["step"]["inputs"] == ["x_t", "state", "output", "delta_t"]
+    assert (out / "step.onnx").exists() and (out / "head.onnx").exists()
+    assert json.loads((out / "manifest.json").read_text()) == manifest
+    # Models without time-aware discretization export a three-input step cell.
+    _, plain = _export_bundle(tmp_path / "plain", CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4))
+    assert plain["graphs"]["step"]["inputs"] == ["x_t", "state", "output"]
+
+
+def test_export_step_and_head_match_torch(tmp_path):
+    onnxruntime = pytest.importorskip("onnxruntime")
+    for time_mode in ("global", "per_entity", "time_aware"):
+        torch.manual_seed(23)
+        model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode=time_mode)
+        out, _ = _export_bundle(tmp_path / time_mode, model)
+        step = onnxruntime.InferenceSession(str(out / "step.onnx"))
+        x = torch.randn(1, FEATURE_DIM)
+        state = torch.randn(1, 12, 4)
+        output = torch.randn(1, 12)
+        delta = torch.tensor([0.37])
+        with torch.no_grad():
+            want_state, want_output = model.temporal.step(x, state, output, delta_t=delta if time_mode == "time_aware" else None)
+        feeds = {"x_t": x.numpy(), "state": state.numpy(), "output": output.numpy()}
+        if time_mode == "time_aware":
+            feeds["delta_t"] = delta.numpy()
+        got_state, got_output = step.run(None, feeds)
+        np.testing.assert_allclose(got_state, want_state.numpy(), atol=1e-5)
+        np.testing.assert_allclose(got_output, want_output.numpy(), atol=1e-5)
+        head = onnxruntime.InferenceSession(str(out / "head.onnx"))
+        for nodes in (1, 4, 9):  # the node axis is dynamic in the exported graph
+            carried = torch.randn(nodes, 12)
+            adjacency = torch.rand(nodes, nodes)
+            adjacency = (adjacency + adjacency.T) / 2
+            with torch.no_grad():
+                want = model.relational_head(model.temporal.norm(carried).unsqueeze(0), torch.ones(1, nodes, 1), adjacency.unsqueeze(0))
+            got_logit, got_nodes = head.run(None, {"outputs": carried.numpy(), "adjacency": adjacency.numpy()})
+            np.testing.assert_allclose(got_logit, want.graph_logit.numpy(), atol=1e-5)
+            np.testing.assert_allclose(got_nodes, want.node_logits[0].numpy(), atol=1e-5)
+
+
+def test_onnx_stream_scorer_matches_streaming(tmp_path):
+    pytest.importorskip("onnxruntime")
+    from idr_intelligence.export import OnnxStreamScorer
+    from idr_intelligence.streaming import StreamingScorer
+
+    ordered = sorted(simulate_campaign(label=1, seed=11, scenario="lateral_movement"), key=lambda event: (event.timestamp, event.id))
+    for time_mode in ("global", "per_entity", "time_aware"):
+        torch.manual_seed(31)
+        model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode=time_mode, decay_half_life=1800.0)
+        with torch.no_grad():
+            model.temperature.fill_(1.5)
+            model.cal_bias.fill_(-0.25)
+        out, _ = _export_bundle(tmp_path / time_mode, model)
+        reference = StreamingScorer(model, model_version="test-export")
+        exported = OnnxStreamScorer(out)
+        for event in ordered:
+            reference.ingest(event)
+            exported.ingest(event)
+        want = reference.finding()
+        got = exported.finding()
+        assert got.escalation_probability == pytest.approx(want.escalation_probability, abs=1e-4)
+        assert got.raw_escalation_probability == pytest.approx(want.raw_escalation_probability, abs=1e-4)
+        assert got.related_entities == want.related_entities
+        assert got.evidence_event_ids == want.evidence_event_ids
+        assert got.observed_attack_stages == want.observed_attack_stages
+        assert got.graph_relations == want.graph_relations
+        assert got.campaign_id == want.campaign_id
+        assert got.calibration == want.calibration
+        assert got.predicted_next_stage == want.predicted_next_stage
+        assert got.feature_schema_hash == want.feature_schema_hash
+
+
+def test_onnx_stream_scorer_budget_and_suppressions_match(tmp_path):
+    pytest.importorskip("onnxruntime")
+    from idr_intelligence.bounded_graph import GraphBudget
+    from idr_intelligence.export import OnnxStreamScorer
+    from idr_intelligence.streaming import StreamingScorer
+
+    ordered = sorted(simulate_campaign(label=1, seed=4), key=lambda event: (event.timestamp, event.id))
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode="per_entity")
+    out, _ = _export_bundle(tmp_path, model)
+    reference = StreamingScorer(model, budget=GraphBudget(max_nodes=6), model_version="test-export")
+    exported = OnnxStreamScorer(out, budget=GraphBudget(max_nodes=6))
+    for event in ordered:
+        reference.ingest(event)
+        exported.ingest(event)
+    want = reference.finding(suppressions=["ip:"])
+    got = exported.finding(suppressions=["ip:"])
+    assert [record.entity for record in exported.evictions] == [record.entity for record in reference.evictions]
+    assert got.related_entities == want.related_entities
+    assert got.applied_suppressions == want.applied_suppressions
+    assert got.escalation_probability == pytest.approx(want.escalation_probability, abs=1e-4)
+
+
+def test_onnx_stream_scorer_drift_matches_streaming(tmp_path):
+    pytest.importorskip("onnxruntime")
+    from idr_intelligence.export import OnnxStreamScorer
+    from idr_intelligence.streaming import StreamingScorer
+
+    ordered = sorted(simulate_campaign(label=1, seed=6), key=lambda event: (event.timestamp, event.id))
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    model.feature_stats = {"bin_edges": np.linspace(0.0, 1.0, 11).tolist(), "histograms": [[1] * 10 for _ in range(FEATURE_DIM)]}
+    out, manifest = _export_bundle(tmp_path, model)
+    assert manifest["feature_stats"] == model.feature_stats  # drift baseline travels with the bundle
+    reference = StreamingScorer(model, model_version="test-export")
+    exported = OnnxStreamScorer(out)
+    for event in ordered:
+        reference.ingest(event)
+        exported.ingest(event)
+    assert exported.finding().feature_drift == reference.finding().feature_drift
+
+
+def test_cli_export_roundtrip(tmp_path, monkeypatch, capsys):
+    weights = tmp_path / "model.pt"
+    save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode="time_aware"), weights)
+    out = tmp_path / "bundle"
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "export", "--weights", str(weights), "--out", str(out)])
+    cli.main()
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["graphs"] == ["head.onnx", "step.onnx"]
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["model_version"] == "model.pt"
+    assert manifest["model"]["time_mode"] == "time_aware"
+    assert (out / "step.onnx").exists() and (out / "head.onnx").exists()

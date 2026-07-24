@@ -29,6 +29,7 @@ It is designed to answer a concrete question:
 - **Deployment controls** — an analyst suppression allowlist that attenuates entities out of the ranking without hiding the finding or touching the campaign probability; a bounded, audited node budget for streaming memory.
 - **Campaign identity across windows** — an opt-in registry (`--registry`) that matches each window's durable-entity fingerprint (hashes, domains, users weigh most; ephemeral processes/sessions excluded) against known campaigns by weighted Jaccard, so `idr-sentinel` can accumulate corroboration for one hypothesis over days instead of treating every scoring call as a new campaign. Deterministic set-matching — every decision is recomputable from the registry JSON.
 - **Streaming scorer** — `StreamingScorer` ingests events one at a time, carrying each entity's S6 state forward with the same `step()` cell training uses (O(1) work and state per event-entity; no history replay) and running the model's relational head over carried states on demand. Bounded entity memory with an audited eviction trail. Findings are test-pinned equivalent to batch scoring across all time modes, edge decay, and drift.
+- **ONNX export + Rust serving bridge** — `idr-intelligence export` writes the streaming surface as two ONNX graphs (the `step()` cell and the relational head) plus a manifest carrying every scoring constant (prior tables, ATT&CK mapping, calibration, dimensions). `rust/idr-intelligence-rt` consumes the bundle on [tract](https://github.com/sonos/tract) (pure Rust, no Python or ONNX Runtime), reproducing `StreamingScorer` findings field-for-field; committed golden streams pin the two implementations together, and a machine-local crate proves the wire format against the real `idr_common` types.
 
 The simulator uses event families already present in `idr-main` (`socket_lineage`, `suspicious_beacon`, `bgp_anomaly`, `ntp_time_shift`, `hsts_time_manipulation`, `nvme_latency_anomaly`, …) and 11 scenario families spanning graded difficulty, hard negatives, evasion (low-and-slow, split-host, hash-rotation), identity-pivot lateral movement, and timing-only discrimination.
 
@@ -49,6 +50,7 @@ idr-intelligence score events.ndjson --weights artifacts/hybrid_model.pt   # sco
 idr-intelligence score events.ndjson --suppress 'ip:' --suppress host:known-scanner  # analyst allowlist
 idr-intelligence score events.ndjson --registry campaigns.json               # stable campaign ids across windows (registry updated in place)
 idr-intelligence stream events.ndjson --max-nodes 64                         # event-at-a-time scoring over carried S6 state, bounded memory
+idr-intelligence export --weights artifacts/hybrid_model.pt --out artifacts/export  # ONNX bundle for the Rust bridge
 
 idr-intelligence benchmark --manifest benchmarks/v1.json                    # frozen regression floors; exit 1 on violation (runs in CI)
 idr-intelligence ablation --folds 3 --replicates 3                          # rolling-origin CV with a statistical best-model verdict
@@ -97,7 +99,10 @@ src/idr_intelligence/pipeline.py    evidence-linked, calibrated scoring
 src/idr_intelligence/evidence.py    per-entity evidence (occlusion, edges, ATT&CK) + suppression
 src/idr_intelligence/campaigns.py   cross-window campaign identity (fingerprint registry)
 src/idr_intelligence/streaming.py   event-at-a-time scoring over carried S6 state
-src/idr_intelligence/cli.py         demo · score · stream · benchmark · ablation · time/decay-ablation
+src/idr_intelligence/export.py      ONNX bundle export + torch-free reference runner (serving contract)
+src/idr_intelligence/cli.py         demo · score · stream · export · benchmark · ablation · time/decay-ablation
+rust/idr-intelligence-rt/           Rust serving bridge on tract (golden-pinned to StreamingScorer)
+rust/idr-common-parity/             machine-local wire parity vs the real idr_common crate (not in CI)
 benchmarks/v1.json                  frozen benchmark manifest with regression floors
 docs/ARCHITECTURE.md                integration design + Rust EventKind contract
 reports/AUDIT.md                    model-risk audit + verified findings

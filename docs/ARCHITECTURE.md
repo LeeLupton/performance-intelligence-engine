@@ -47,4 +47,21 @@ reject findings whose hash disagrees with the deployed engine's manifest. The
 same hash is embedded in every checkpoint, and `load_campaign_model` refuses a
 checkpoint whose manifest disagrees with the runtime (`SchemaMismatchError`).
 
-The current repository is the reproducible development and ablation environment. Production deployment still requires real labeled campaigns, timestamp-versioned graph snapshots, calibration, and a Rust or ONNX inference adapter.
+## Serving bridge (W17)
+
+The ONNX inference adapter exists: `idr-intelligence export` writes the
+streaming surface as `step.onnx` (the W13 `step()` cell), `head.onnx` (the
+shared relational head), and `manifest.json` carrying every scoring constant —
+prior tables, the ATT&CK mapping above, calibration, dimensions, and IO
+signatures. `rust/idr-intelligence-rt` consumes the bundle on tract (pure
+Rust) and reproduces `StreamingScorer` findings field-for-field; committed
+golden streams pin the two implementations together, and the machine-local
+`rust/idr-common-parity` crate proves the input wire format against the real
+`idr_common` types from the idr-main tree.
+
+The `EventKind::IntelligenceFinding` variant above remains the *proposed*
+idr-main addition — idr-main is modified only on explicit instruction. Until
+it lands, the bridge emits the finding JSON directly (the variant's exact
+field shape) rather than wrapping it in an `IdrEvent` envelope.
+
+The current repository is the reproducible development and ablation environment. Production deployment still requires real labeled campaigns, timestamp-versioned graph snapshots, and calibration fit on real data.

@@ -25,7 +25,8 @@ jobs:
             python-scikit-learn \
             python-pytest \
             python-ruff \
-            mypy
+            mypy \
+            rust
 
       - uses: actions/checkout@v4
 
@@ -34,6 +35,9 @@ jobs:
 
       - name: Install project
         run: .venv/bin/python -m pip install --no-deps -e .
+
+      - name: Install ONNX export toolchain
+        run: .venv/bin/python -m pip install onnx onnxruntime
 
       - name: Verify imports
         run: |
@@ -60,3 +64,14 @@ jobs:
 
       - name: Run benchmark floors
         run: cd "$(mktemp -d)" && "$GITHUB_WORKSPACE/.venv/bin/python" -m idr_intelligence.cli benchmark --manifest "$GITHUB_WORKSPACE/benchmarks/v1.json"
+
+      # rust/idr-common-parity is machine-local (path-dep on the idr-main
+      # working tree) and deliberately not built here.
+      - name: Run Rust format check
+        run: cargo fmt --check --manifest-path rust/idr-intelligence-rt/Cargo.toml
+
+      - name: Run Rust lints
+        run: cargo clippy --all-targets --manifest-path rust/idr-intelligence-rt/Cargo.toml -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path rust/idr-intelligence-rt/Cargo.toml

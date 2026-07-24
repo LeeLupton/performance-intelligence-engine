@@ -81,7 +81,10 @@ def score_events(
         node_probability = torch.sigmoid(node_logits).cpu().numpy()
     calibration = model.calibration_label()
     ranking_scores, applied_suppressions = apply_suppressions(graph.node_ids, node_probability, suppressions or [])
-    ranked = np.argsort(-ranking_scores)[: min(top_k, graph.node_count)]
+    # Stable sort: structurally identical entities tie exactly, and the ranked
+    # order among ties must be defined (first-seen) for findings to be
+    # reproducible across runs, platforms, and the Rust serving bridge.
+    ranked = np.argsort(-ranking_scores, kind="stable")[: min(top_k, graph.node_count)]
     ranked = np.array([index for index in ranked if np.isfinite(ranking_scores[index])], dtype=int)
     related = tuple(graph.node_ids[index] for index in ranked)
     evidence = tuple(dict.fromkeys(event_id for index in ranked for event_id in graph.evidence_ids[index]))

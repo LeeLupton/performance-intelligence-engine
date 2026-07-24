@@ -101,6 +101,22 @@
       {
         "module": "src/idr_intelligence/streaming.py",
         "role": "one-event-at-a-time scoring: EntityState carried S6 (state,output) via step(), bounded by GraphBudget with audited eviction; relational head re-run at query time"
+      },
+      {
+        "module": "src/idr_intelligence/export.py",
+        "role": "ONNX bundle export (step cell + relational head + manifest of every scoring constant) and OnnxStreamScorer, the torch-free reference runner that is the executable spec of the serving contract"
+      },
+      {
+        "module": "rust/idr-intelligence-rt/src/scorer.rs",
+        "role": "Rust streaming scorer over tract: semantics-preserving port of streaming.py pinned to Python by committed golden streams"
+      },
+      {
+        "module": "rust/idr-intelligence-rt/src/features.rs",
+        "role": "Rust port of features.project_event (entities/edges/22-dim vector incl. blake2s kind hash), pinned exactly by feature_vectors.json fixture"
+      },
+      {
+        "module": "rust/idr-common-parity/tests/wire.rs",
+        "role": "machine-local wire parity: bridge parses idr_common-serialized events, goldens deserialize into real idr_common::IdrEvent (not in CI; path-dep on idr-main tree)"
       }
     ],
     "interfaces": [
@@ -122,7 +138,7 @@
       {
         "name": "IntelligenceFinding",
         "version": "v7",
-        "contract": "v6 fields + continues_campaign (bool) and windows_observed (int), populated when score_events receives a CampaignRegistry; without one they default to False/1 and campaign_id stays the per-call first-event derivation — additive, back-compat"
+        "contract": "v6 fields + continues_campaign (bool) and windows_observed (int), populated when score_events receives a CampaignRegistry; without one they default to False/1 and campaign_id stays the per-call first-event derivation \u2014 additive, back-compat"
       },
       {
         "name": "CampaignRegistry",
@@ -133,6 +149,11 @@
         "name": "LabeledWindow",
         "version": "v1",
         "contract": "{window_id, label 0|1, events [IdrEvent,...]} one-per-line in *.labeled.ndjson; loader sorts by window start so the chronological split stays honest; single-class split segments fail loudly"
+      },
+      {
+        "name": "OnnxExportBundle",
+        "version": "v1 (format idr-intelligence-onnx-v1)",
+        "contract": "step.onnx (x_t[1,F], state[1,H,S], output[1,H], delta_t[1] iff time_aware -> state_out, output_out) + head.onnx (outputs[N,H], adjacency[N,N] -> graph_logit[1], node_logits[N], N dynamic) + manifest.json carrying engine/model versions, feature_schema_hash, dims/time_mode/decay, calibration (temperature/bias/label), severity_weight + kind_prior tables with defaults, delta_log_divisor, ATT&CK tactic_order + kind_to_attack, top_k/evidence_limit, optional feature_stats, and per-graph IO signatures. Consumers hardcode nothing; the Python exporter is the single source of truth"
       }
     ],
     "decisions": [
@@ -273,13 +294,23 @@
       },
       {
         "id": "ADR-28",
-        "decision": "W16 campaign identity is deterministic set-matching, not a model: durable-entity fingerprints (weighted by continuity strength — hash/domain/user outweigh host; ephemeral process:/session: excluded) matched by weighted Jaccard at 0.5. A match continues the campaign (fingerprint unioned so identity follows infrastructure as it grows), a miss registers a blake2s content-addressed id (order-independent, reproducible). The registry is opt-in (score_events(registry=...), CLI --registry PATH load->match->save); without it findings behave exactly as before. Sentinel id for windows with no durable entities. Auditable by construction — idr-sentinel can recompute every match decision from the finding + registry JSON",
+        "decision": "W16 campaign identity is deterministic set-matching, not a model: durable-entity fingerprints (weighted by continuity strength \u2014 hash/domain/user outweigh host; ephemeral process:/session: excluded) matched by weighted Jaccard at 0.5. A match continues the campaign (fingerprint unioned so identity follows infrastructure as it grows), a miss registers a blake2s content-addressed id (order-independent, reproducible). The registry is opt-in (score_events(registry=...), CLI --registry PATH load->match->save); without it findings behave exactly as before. Sentinel id for windows with no durable entities. Auditable by construction \u2014 idr-sentinel can recompute every match decision from the finding + registry JSON",
         "where": "docs/ROADMAP.md W16"
       },
       {
         "id": "ADR-29",
-        "decision": "W15 streaming scorer: per-entity S6 (state,output) carried forward with the W13 step() cell — O(1) work and state per (event,entity), no history replay — while the GNN+pooling+heads run at query time via CampaignModel.relational_head(), extracted from forward() as pure code motion (benchmark floors confirm bit-identical). Adjacency/decay/drift/stages accumulate incrementally against factored shared helpers (graph.degree_normalize, pipeline.psi_drift, attack.next_stage_from_stages) so batch and streaming share one code path everywhere. Numerical-equivalence tests pin streaming==batch findings across all three time modes, decayed edges, and PSI drift. HONEST SCOPE: events must arrive chronologically (out-of-order raises; an upstream replay/sort buffer owns reordering — the W12-deferred replay-wrapper is that buffer, still deferred until a real consumer exists); entity_evidence is empty in streaming findings because occlusion attribution requires exactly the history replay streaming exists to avoid; incremental LRU eviction under a budget can differ from one-shot batch eviction (inherent — the stream cannot know the future); torch.sparse.mm still deferred — relational head cost is O(N^2 * hidden) per query at bounded N, dense bmm remains cheaper at these sizes",
+        "decision": "W15 streaming scorer: per-entity S6 (state,output) carried forward with the W13 step() cell \u2014 O(1) work and state per (event,entity), no history replay \u2014 while the GNN+pooling+heads run at query time via CampaignModel.relational_head(), extracted from forward() as pure code motion (benchmark floors confirm bit-identical). Adjacency/decay/drift/stages accumulate incrementally against factored shared helpers (graph.degree_normalize, pipeline.psi_drift, attack.next_stage_from_stages) so batch and streaming share one code path everywhere. Numerical-equivalence tests pin streaming==batch findings across all three time modes, decayed edges, and PSI drift. HONEST SCOPE: events must arrive chronologically (out-of-order raises; an upstream replay/sort buffer owns reordering \u2014 the W12-deferred replay-wrapper is that buffer, still deferred until a real consumer exists); entity_evidence is empty in streaming findings because occlusion attribution requires exactly the history replay streaming exists to avoid; incremental LRU eviction under a budget can differ from one-shot batch eviction (inherent \u2014 the stream cannot know the future); torch.sparse.mm still deferred \u2014 relational head cost is O(N^2 * hidden) per query at bounded N, dense bmm remains cheaper at these sizes",
         "where": "docs/ROADMAP.md W15"
+      },
+      {
+        "id": "ADR-30",
+        "decision": "W17 serving contract is two small ONNX graphs plus a constants manifest, not one monolithic model: the W13 step() cell exports with fixed shapes (recurrence driven by the consumer, no ONNX Scan/Loop), the shared relational_head exports with a symbolic node axis, and manifest.json carries every scoring constant so the Rust side hardcodes nothing. TorchScript exporter at opset 18 pinned deliberately (dynamo=False) - its op choices are what the parity suite validates. Runtime is tract (pure Rust, no ONNX Runtime shared lib, builds in the Arch CI container); ort rejected as a system-library dependency. One model change was required: GatedAttentionPool's nan_to_num became where(isnan,0) - identical semantics (softmax output is bounded so the inf branches were dead code) but avoids the IsInf op tract cannot evaluate; benchmark floors confirm no behavior change. export.OnnxStreamScorer (torch-free, onnxruntime) is the executable spec the Rust port is tested against; committed fixtures (two mixed multi-campaign golden streams + per-event feature vectors + budget/suppression case, generated by a script that asserts ORT==torch agreement and a 5e-5 top-k probability gap floor before writing) pin Rust==Python field-for-field with 1e-4 probability tolerance. Integration against idr_common::IdrEvent is proven by the machine-local rust/idr-common-parity crate (path-dep on the idr-main working tree; NOT in CI) because the published github leelupton/idr is stale - it lacks ExternalTriage/TriageClassification/BgpAnomaly that the local tree and this engine already handle, so a git-dep would pin an outdated schema. HONEST SCOPE mirrors streaming: no CampaignRegistry in Rust (first-event fallback id), entity_evidence empty, and findings are emitted as bare JSON in the sketched EventKind::IntelligenceFinding field shape - the envelope variant remains a proposed idr-main change awaiting explicit instruction (idr-main is modify-only-on-instruction)",
+        "where": "docs/ARCHITECTURE.md; rust/idr-intelligence-rt/README.md"
+      },
+      {
+        "id": "ADR-31",
+        "decision": "Entity ranking uses a stable sort with first-seen tie-break everywhere (np.argsort kind=stable in pipeline/streaming/export; stable sort_by in Rust). Exact probability ties are data-inherent, not fixable by seeds: structurally identical entities (same feature history, isomorphic graph position) score identically under ANY weights, and numpy's default introsort made their ranked order an unspecified artifact. A defined tie order is required for findings to be reproducible across runs, platforms, and the Rust bridge. One pre-existing test loosened to set-comparison: a ~1e-8 batch-vs-streaming float difference can legitimately break an exact tie in only one path, permuting tied neighbors",
+        "where": "src/idr_intelligence/pipeline.py; tests/test_system.py test_streaming_matches_batch_scoring"
       }
     ]
   },
@@ -309,12 +340,11 @@
       "v0.1 consolidation: README refreshed to match the shipped engine (capabilities, all CLI subcommands, full repo map, honest temporal-physics note, updated resume bullet)",
       "W13: S6 step() cell (shared _recurrence, streaming step(), lossless snapshot/restore, numerical equivalence to forward) \u2014 enables W15/W17",
       "W16: campaign-identity registry (campaigns.py; weighted durable-entity fingerprint matching, content-addressed IDs, opt-in via score_events(registry=)/CLI --registry; finding v7 adds continues_campaign + windows_observed)",
-      "W15: streaming scorer (streaming.py: StreamingScorer over W13 step() + bounded_graph, CLI stream subcommand; equivalence to batch pinned across time modes/decay/drift)"
+      "W15: streaming scorer (streaming.py: StreamingScorer over W13 step() + bounded_graph, CLI stream subcommand; equivalence to batch pinned across time modes/decay/drift)",
+      "W17: ONNX export + Rust serving bridge (export.py + CLI export; rust/idr-intelligence-rt on tract, golden-pinned to StreamingScorer; rust/idr-common-parity wire proof against the real idr_common from the idr-main tree; CI extended with cargo fmt/clippy/test). ROADMAP COMPLETE - all 17 workstreams shipped"
     ],
     "active": [],
-    "blocked": [
-      "W17 ONNX export + Rust bridge (uses W13 step(); NEEDS user machine \u2014 Rust toolchain + idr-main). ALL other workstreams complete \u2014 this is the only remaining item"
-    ]
+    "blocked": []
   },
   "evidence": {
     "commands_run": [
@@ -332,10 +362,35 @@
         "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
         "when": "2026-07-23",
         "result": "passed, 0 violations (relational_head extraction is pure code motion; forward bit-identical)"
+      },
+      {
+        "cmd": "python -m pytest -q",
+        "when": "2026-07-24",
+        "result": "107 passed"
+      },
+      {
+        "cmd": "ruff check src tests && python -m mypy src",
+        "when": "2026-07-24",
+        "result": "clean; 19 source files"
+      },
+      {
+        "cmd": "idr-intelligence benchmark --manifest benchmarks/v1.json",
+        "when": "2026-07-24",
+        "result": "passed, 0 violations (nan_to_num->where(isnan) and stable ranking are behavior-preserving)"
+      },
+      {
+        "cmd": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test (rust/idr-intelligence-rt)",
+        "when": "2026-07-24",
+        "result": "clean; 6/6 tests incl. golden parity within 1e-4 and exact discrete-field equality"
+      },
+      {
+        "cmd": "cargo test (rust/idr-common-parity, machine-local vs /home/lee/Desktop/CYBER/idr-main)",
+        "when": "2026-07-24",
+        "result": "3/3: idr_common wire format round-trips through the bridge; note published github idr repo is stale vs local tree (lacks ExternalTriage/TriageClassification/BgpAnomaly)"
       }
     ],
     "tests": [
-      "tests: 99 \u2014 adds W15 coverage: streaming==batch finding equivalence across global/per_entity/time_aware, decayed-edge equivalence, PSI-drift equivalence, out-of-order rejection, S6-required guard, budget eviction with audit, registry continuity across streaming windows, CLI stream round-trip with --max-nodes"
+      "tests: 107 python (adds W17: ORT step/head parity across time modes incl. dynamic node axis, OnnxStreamScorer==StreamingScorer across time modes + budget/suppressions + drift, manifest-matches-runtime, S6-required guard, attention NaN-guard, CLI export round-trip) + 6 rust bridge tests (golden malicious/benign/budget streams field-for-field vs torch reference, feature-vector exact parity, out-of-order rejection, empty-finding error) + 3 machine-local wire tests (bridge parses idr_common-serialized events incl. TriageClassification/BgpAnomaly, scores an idr_common stream end-to-end, goldens deserialize into real idr_common::IdrEvent)"
     ],
     "benchmarks": [
       {
@@ -433,15 +488,27 @@
     {
       "path": "artifacts/hybrid_model.pt",
       "role": "checkpoint v2 (generated by demo, gitignored)"
+    },
+    {
+      "path": "rust/idr-intelligence-rt/",
+      "role": "Rust serving bridge crate (tract runtime, CLI mirroring `stream`, golden parity tests)"
+    },
+    {
+      "path": "rust/idr-intelligence-rt/tests/fixtures/generate.py",
+      "role": "deterministic fixture generator: bundle + golden streams + feature vectors; self-asserts ORT==torch and top-k gap floor"
+    },
+    {
+      "path": "rust/idr-common-parity/",
+      "role": "machine-local integration crate vs real idr_common (path-dep on idr-main tree; not in CI)"
     }
   ],
   "compressed_state": {
     "format": "performance-intelligence-state-v1",
-    "source_digest": "git:627db0f-plus-w15",
+    "source_digest": "git:2c26ef2-plus-w17",
     "state_vector": [],
     "latest_event": {
-      "when": "2026-07-23",
-      "summary": "W15 streaming scorer shipped: carried per-entity S6 state via step(), bounded memory with audited eviction, findings equivalent to batch (pinned by test) across time modes/decay/drift. 16/17 workstreams done — only W17 (ONNX + Rust bridge) remains and it NEEDS the user's machine"
+      "when": "2026-07-24",
+      "summary": "W17 shipped on the user's machine: ONNX export bundle (step cell + relational head + constants manifest), Rust idr-intelligence-rt bridge on tract reproducing StreamingScorer findings field-for-field (golden-pinned), machine-local wire proof against the real idr_common crate. ROADMAP COMPLETE: 17/17 workstreams"
     }
   }
 }

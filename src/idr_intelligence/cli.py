@@ -46,6 +46,11 @@ def main() -> None:
     stream.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
     stream.add_argument("--registry", default=None, help="campaign registry JSON path; matched and updated so campaign ids stay stable across windows")
 
+    export = subparsers.add_parser("export", help="export the streaming model as an ONNX bundle (step + head + manifest)")
+    export.add_argument("--weights", default="artifacts/hybrid_model.pt")
+    export.add_argument("--out", default="artifacts/export", help="output directory for step.onnx, head.onnx, manifest.json")
+    export.add_argument("--model-version", default=None, help="model_version recorded in the manifest; defaults to the weights filename")
+
     bench = subparsers.add_parser("benchmark", help="run a frozen benchmark manifest; exit 1 on floor violations")
     bench.add_argument("--manifest", default="benchmarks/v1.json")
 
@@ -88,6 +93,18 @@ def main() -> None:
         print(json.dumps(time_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
     elif args.command == "decay-ablation":
         print(json.dumps(decay_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
+    elif args.command == "export":
+        from .export import export_streaming_bundle
+
+        model = load_campaign_model(args.weights)
+        manifest = export_streaming_bundle(model, args.out, model_version=args.model_version or Path(args.weights).name)
+        print(json.dumps({
+            "out": args.out,
+            "graphs": sorted(graph["file"] for graph in manifest["graphs"].values()),
+            "model": manifest["model"],
+            "calibration": manifest["calibration"]["label"],
+            "feature_schema_hash": manifest["feature_schema_hash"],
+        }, indent=2))
     elif args.command == "stream":
         from .bounded_graph import GraphBudget
         from .streaming import StreamingScorer
