@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -9,10 +9,14 @@ import torch
 from idr_intelligence import cli
 from idr_intelligence.config import DEFAULT_CONFIG, ENGINE_VERSION, load_config
 from idr_intelligence.features import FEATURE_DIM, FEATURE_NAMES
-from idr_intelligence.registry import ModelManifest, SchemaMismatchError, feature_schema_hash
 from idr_intelligence.graph import build_temporal_graph
 from idr_intelligence.models import CampaignModel, load_campaign_model, save_checkpoint
 from idr_intelligence.pipeline import score_events
+from idr_intelligence.registry import (
+    ModelManifest,
+    SchemaMismatchError,
+    feature_schema_hash,
+)
 from idr_intelligence.schema import IdrEvent
 from idr_intelligence.simulator import simulate_campaign
 from idr_intelligence.training import make_dataset, train_ablation
@@ -87,7 +91,7 @@ def test_timestamps_normalize_to_utc():
     naive = IdrEvent.from_dict({**base, "timestamp": "2026-06-18T12:00:00"})
     offset = IdrEvent.from_dict({**base, "timestamp": "2026-06-18T14:00:00+02:00"})
     assert zulu.timestamp == naive.timestamp == offset.timestamp
-    assert zulu.timestamp.tzinfo == timezone.utc
+    assert zulu.timestamp.tzinfo == UTC
 
 
 def test_train_ablation_smoke_and_checkpoint_roundtrip(tmp_path, monkeypatch):
@@ -440,10 +444,10 @@ def test_drift_is_none_without_snapshot():
 
 
 def _timed_events(times_and_hosts):
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     base = {"source": "kernel_ebpf", "severity": "HIGH"}
-    start = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 6, 18, 12, 0, tzinfo=UTC)
     out = []
     for idx, (minute, host) in enumerate(times_and_hosts):
         stamp = (start + timedelta(minutes=minute)).isoformat()
@@ -507,12 +511,12 @@ def test_graph_budget_evicts_least_recent():
 
 
 def test_graph_budget_apply_is_deterministic():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from idr_intelligence.bounded_graph import GraphBudget
 
     def t(minute):
-        return datetime(2026, 1, 1, 12, minute, tzinfo=timezone.utc)
+        return datetime(2026, 1, 1, 12, minute, tzinfo=UTC)
 
     last_seen = {"a": t(0), "b": t(5), "c": t(5), "d": t(9)}
     kept, evictions = GraphBudget(max_nodes=2).apply(last_seen)
@@ -1066,7 +1070,11 @@ def test_campaign_fingerprint_keeps_durable_drops_ephemeral():
 
 
 def test_weighted_jaccard_host_only_insufficient_infrastructure_sufficient():
-    from idr_intelligence.campaigns import MATCH_THRESHOLD, fingerprint, weighted_jaccard
+    from idr_intelligence.campaigns import (
+        MATCH_THRESHOLD,
+        fingerprint,
+        weighted_jaccard,
+    )
 
     known = fingerprint(["hash:abc", "domain:evil.example", "host:alpha"])
     # Same C2 infrastructure seen from a different host: continues the campaign.
@@ -1141,6 +1149,135 @@ def test_score_events_with_registry_keeps_campaign_identity_stable():
     solo = score_events(events, model)
     assert solo.campaign_id == f"idr-campaign-{min(events, key=lambda e: (e.timestamp, e.id)).id[:8]}"
     assert (solo.continues_campaign, solo.windows_observed) == (False, 1)
+
+
+def test_streaming_matches_batch_scoring():
+    from idr_intelligence.streaming import StreamingScorer
+
+    events = simulate_campaign(label=1, seed=8)
+    ordered = sorted(events, key=lambda event: (event.timestamp, event.id))
+    for time_mode in ("global", "per_entity", "time_aware"):
+        model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode=time_mode)
+        batch = score_events(events, model, max_steps=64)
+        scorer = StreamingScorer(model)
+        for event in ordered:
+            scorer.ingest(event)
+        stream = scorer.finding()
+        assert stream.escalation_probability == pytest.approx(batch.escalation_probability, abs=1e-4)
+        assert stream.raw_escalation_probability == pytest.approx(batch.raw_escalation_probability, abs=1e-4)
+        assert stream.related_entities == batch.related_entities
+        assert stream.evidence_event_ids == batch.evidence_event_ids
+        assert stream.campaign_id == batch.campaign_id
+        assert stream.predicted_next_stage == batch.predicted_next_stage
+        assert stream.observed_attack_stages == batch.observed_attack_stages
+        assert stream.graph_relations == batch.graph_relations
+        assert stream.graph_nodes == batch.graph_nodes
+
+
+def test_streaming_decayed_edges_match_batch():
+    from idr_intelligence.streaming import StreamingScorer
+
+    events = _timed_events([(0, "alpha"), (30, "beta"), (400, "alpha")])
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, decay_half_life=3600.0)
+    batch = score_events(events, model, max_steps=64)
+    scorer = StreamingScorer(model)
+    for event in events:
+        scorer.ingest(event)
+    stream = scorer.finding()
+    assert stream.escalation_probability == pytest.approx(batch.escalation_probability, abs=1e-4)
+    assert stream.related_entities == batch.related_entities
+
+
+def test_streaming_rejects_out_of_order_events():
+    from idr_intelligence.streaming import StreamingScorer
+
+    early, late = _timed_events([(0, "alpha"), (30, "alpha")])
+    scorer = StreamingScorer(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4))
+    scorer.ingest(late)
+    with pytest.raises(ValueError, match="out-of-order"):
+        scorer.ingest(early)
+
+
+def test_streaming_requires_s6_model():
+    from idr_intelligence.streaming import StreamingScorer
+
+    with pytest.raises(ValueError, match="requires an S6 model"):
+        StreamingScorer(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, use_s6=False))
+
+
+def test_streaming_budget_bounds_entities_with_audit():
+    from idr_intelligence.bounded_graph import GraphBudget
+    from idr_intelligence.streaming import StreamingScorer
+
+    events = sorted(simulate_campaign(label=1, seed=8), key=lambda event: (event.timestamp, event.id))
+    unbounded = StreamingScorer(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4))
+    for event in events:
+        unbounded.ingest(event)
+    budget = GraphBudget(max_nodes=max(2, len(unbounded.entities) - 3))
+    scorer = StreamingScorer(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4), budget=budget)
+    for event in events:
+        scorer.ingest(event)
+    assert len(scorer.entities) <= budget.max_nodes
+    assert scorer.evictions and all(record.reason == "node_budget" for record in scorer.evictions)
+    finding = scorer.finding()
+    assert finding.graph_nodes <= budget.max_nodes
+    assert 0.0 <= finding.escalation_probability <= 1.0
+
+
+def test_streaming_drift_matches_batch():
+    from idr_intelligence.streaming import StreamingScorer
+
+    events = simulate_campaign(label=1, seed=8)
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    model.feature_stats = {
+        "bin_edges": list(np.linspace(0.0, 1.0, 11)),
+        "histograms": [[1] * 10 for _ in range(FEATURE_DIM)],
+    }
+    batch = score_events(events, model, max_steps=64)
+    scorer = StreamingScorer(model)
+    for event in sorted(events, key=lambda item: (item.timestamp, item.id)):
+        scorer.ingest(event)
+    stream = scorer.finding()
+    assert batch.feature_drift is not None
+    assert stream.feature_drift == batch.feature_drift
+
+
+def test_streaming_registry_gives_cross_window_continuity():
+    from idr_intelligence.campaigns import CampaignRegistry
+    from idr_intelligence.streaming import StreamingScorer
+
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    events = sorted(simulate_campaign(label=1, seed=8), key=lambda event: (event.timestamp, event.id))
+    registry = CampaignRegistry()
+    findings = []
+    for _ in range(2):  # two independent scoring windows over the same infrastructure
+        scorer = StreamingScorer(model)
+        for event in events:
+            scorer.ingest(event)
+        findings.append(scorer.finding(registry=registry))
+    assert findings[0].campaign_id == findings[1].campaign_id
+    assert (findings[0].continues_campaign, findings[0].windows_observed) == (False, 1)
+    assert (findings[1].continues_campaign, findings[1].windows_observed) == (True, 2)
+
+
+def test_cli_stream_roundtrip(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    lines = []
+    for event in simulate_campaign(1, 5):
+        lines.append(json.dumps({
+            "id": event.id, "timestamp": event.timestamp.isoformat(), "source": event.source,
+            "severity": event.severity, "kind": event.kind, "metadata": event.metadata,
+        }))
+    events_path.write_text("\n".join(lines) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4), weights)
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "stream", str(events_path), "--weights", str(weights), "--max-nodes", "6"])
+    cli.main()
+    finding = json.loads(capsys.readouterr().out)
+    assert finding["model_version"] == "model.pt"
+    assert 0 < finding["graph_nodes"] <= 6
+    assert finding["evidence_event_ids"]
+    assert "evictions" in finding
 
 
 def test_cli_score_registry_persists_across_invocations(tmp_path, monkeypatch, capsys):

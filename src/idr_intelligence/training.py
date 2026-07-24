@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import random
 from dataclasses import dataclass
@@ -10,7 +11,13 @@ from typing import Any
 
 import numpy as np
 import torch
-from sklearn.metrics import average_precision_score, brier_score_loss, log_loss, roc_auc_score, roc_curve
+from sklearn.metrics import (
+    average_precision_score,
+    brier_score_loss,
+    log_loss,
+    roc_auc_score,
+    roc_curve,
+)
 from torch import nn
 
 from .config import DEFAULT_CONFIG
@@ -509,7 +516,7 @@ def _calibration_errors(labels: np.ndarray, probability: np.ndarray, bins: int =
     """Expected and max calibration error over equal-width probability bins."""
     edges = np.linspace(0.0, 1.0, bins + 1)
     expected, maximum = 0.0, 0.0
-    for low, high in zip(edges[:-1], edges[1:]):
+    for low, high in itertools.pairwise(edges):
         selected = (probability > low) & (probability <= high) if low > 0 else (probability >= low) & (probability <= high)
         if not selected.any():
             continue

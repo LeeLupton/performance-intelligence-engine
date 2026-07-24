@@ -204,6 +204,28 @@ class CampaignModel(nn.Module):
             return "none"
         return f"affine:scale={1.0 / temperature:.6f},bias={bias:.6f}"
 
+    def relational_head(self, node_state: torch.Tensor, active_nodes: torch.Tensor, adjacency: torch.Tensor) -> ModelOutput:
+        """Graph layers + pooling + heads over encoded node states.
+
+        The single post-encoder path, shared by forward() (which encodes node
+        states from padded sequences) and the streaming scorer (which carries
+        node states forward one event at a time) — no train/serve skew.
+        node_state is [batch, nodes, hidden]; active_nodes is [batch, nodes, 1].
+        """
+        if self.graph_layers is not None:
+            for layer in self.graph_layers:
+                node_state = layer(node_state, adjacency)
+        count = active_nodes.sum(dim=1).clamp_min(1.0)
+        mean_pool = (node_state * active_nodes).sum(dim=1) / count
+        if self.attention is not None:
+            pooled, node_logits = self.attention(node_state, active_nodes)
+        else:
+            assert self.node_head is not None
+            node_logits = self.node_head(node_state).squeeze(-1)
+            pooled = _masked_max(node_state, active_nodes, dim=1)
+        graph_logit = self.graph_head(torch.cat([mean_pool, pooled], dim=-1)).squeeze(-1)
+        return ModelOutput(graph_logit=graph_logit, node_logits=node_logits)
+
     def forward(self, sequences: torch.Tensor, mask: torch.Tensor, adjacency: torch.Tensor, deltas: torch.Tensor | None = None) -> ModelOutput:
         batch, nodes, steps, features = sequences.shape
         flat_sequence = sequences.view(batch * nodes, steps, features)
@@ -219,20 +241,8 @@ class CampaignModel(nn.Module):
             maximum = _masked_max(flat_sequence, valid, dim=1)
             node_state = self.static(torch.cat([mean, maximum], dim=-1))
         node_state = node_state.view(batch, nodes, -1)
-        if self.graph_layers is not None:
-            for layer in self.graph_layers:
-                node_state = layer(node_state, adjacency)
         active_nodes = (mask.sum(dim=-1) > 0).float().unsqueeze(-1)
-        count = active_nodes.sum(dim=1).clamp_min(1.0)
-        mean_pool = (node_state * active_nodes).sum(dim=1) / count
-        if self.attention is not None:
-            pooled, node_logits = self.attention(node_state, active_nodes)
-        else:
-            assert self.node_head is not None
-            node_logits = self.node_head(node_state).squeeze(-1)
-            pooled = _masked_max(node_state, active_nodes, dim=1)
-        graph_logit = self.graph_head(torch.cat([mean_pool, pooled], dim=-1)).squeeze(-1)
-        return ModelOutput(graph_logit=graph_logit, node_logits=node_logits)
+        return self.relational_head(node_state, active_nodes, adjacency)
 
 
 def save_checkpoint(model: CampaignModel, path: str | Path) -> None:

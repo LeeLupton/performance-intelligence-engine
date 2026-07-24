@@ -66,6 +66,21 @@ def observed_attack_stages(events: list[IdrEvent]) -> tuple[dict[str, Any], ...]
     return tuple(stages.values())
 
 
+def next_stage_from_stages(stages: tuple[dict[str, Any], ...]) -> str:
+    """Next unobserved kill-chain tactic after the furthest tactic in `stages`.
+
+    Shared by batch (predict_next_stage over events) and the streaming scorer
+    (which accumulates stage observations incrementally).
+    """
+    observed_indices = {TACTIC_ORDER.index(stage["tactic"]) for stage in stages}
+    if not observed_indices:
+        return "unknown"
+    for index in range(max(observed_indices) + 1, len(TACTIC_ORDER)):
+        if index not in observed_indices:
+            return TACTIC_ORDER[index]
+    return "kill-chain-complete"
+
+
 def predict_next_stage(events: list[IdrEvent]) -> str:
     """Next unobserved kill-chain tactic after the furthest tactic observed.
 
@@ -74,12 +89,4 @@ def predict_next_stage(events: list[IdrEvent]) -> str:
     events arrived in, and a lone execution-stage event predicts persistence —
     not a stage the campaign already passed.
     """
-    observed_indices = {
-        TACTIC_ORDER.index(stage["tactic"]) for stage in observed_attack_stages(events)
-    }
-    if not observed_indices:
-        return "unknown"
-    for index in range(max(observed_indices) + 1, len(TACTIC_ORDER)):
-        if index not in observed_indices:
-            return TACTIC_ORDER[index]
-    return "kill-chain-complete"
+    return next_stage_from_stages(observed_attack_stages(events))

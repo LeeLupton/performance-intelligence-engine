@@ -19,7 +19,7 @@ Scenario families:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from .schema import IdrEvent
 
@@ -49,7 +49,7 @@ def simulate_campaign(
     if scenario not in SCENARIOS:
         raise ValueError(f"unknown scenario: {scenario}")
     primary_host = host or f"workstation-{seed % 19:02d}"
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=seed * 3)
+    start = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=seed * 3)
     events: list[IdrEvent] = []
 
     def add(minutes: float, source: str, severity: str, kind: dict, event_host: str, stage_index: int) -> None:

@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .config import DEFAULT_CONFIG, ENGINE_VERSION, EngineConfig
@@ -43,12 +43,12 @@ class ModelManifest:
     calibration: str = "none"
 
     @classmethod
-    def create(cls, config: EngineConfig = DEFAULT_CONFIG, calibration: str = "none") -> "ModelManifest":
+    def create(cls, config: EngineConfig = DEFAULT_CONFIG, calibration: str = "none") -> ModelManifest:
         return cls(
             engine_version=ENGINE_VERSION,
             feature_schema_hash=feature_schema_hash(),
             config_hash=config.config_hash(),
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             calibration=calibration,
         )
 
@@ -56,7 +56,7 @@ class ModelManifest:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "ModelManifest":
+    def from_dict(cls, raw: dict[str, Any]) -> ModelManifest:
         return cls(**raw)
 
     def verify_feature_schema(self) -> None:
