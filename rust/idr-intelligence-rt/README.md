@@ -44,6 +44,20 @@ side against the real `idr_common` types from the idr-main tree.
 - Events must arrive in chronological order; the CLI sorts its whole input,
   a long-running consumer owns its own reorder buffer.
 
+## Input trust
+
+The bridge consumes the IDR pipeline's own event stream. Like the Python
+engine it mirrors, it places no cap on entities per event — a single event
+with a huge `dest_ips` array creates that many entities, and `finding()`
+builds a dense N×N adjacency — so scoring arbitrary untrusted NDJSON from
+outside the pipeline is out of scope. Use `--max-nodes` to bound memory
+across events on long streams.
+
+Timestamps accept RFC 3339 (nanoseconds truncated to microseconds, matching
+Python's datetime precision), naive / space-separated / minute-precision ISO
+shapes, and bare dates; exotic ISO-8601 variants (basic format, comma
+fractions) are rejected up front.
+
 Findings are advisory: the evidence boundary in `docs/ARCHITECTURE.md` applies
 unchanged — output feeds the deterministic IDR correlator for corroboration
 and must never trigger an automated response on its own.

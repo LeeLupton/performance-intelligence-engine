@@ -1,7 +1,7 @@
 [
   {
     "event": {
-      "id": "00000000-0000-0000-0000-00000000019a",
+      "id": "ca21edca-52a9-fd7d-0477-d3cee6545d0b",
       "timestamp": "2025-12-30T03:00:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -73,7 +73,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000199",
+      "id": "4e0cd281-2cbe-18e6-eb9f-806f5af98e1c",
       "timestamp": "2025-12-30T06:00:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -145,7 +145,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000198",
+      "id": "667a1876-630f-dd10-ad42-c3f0d9d28ced",
       "timestamp": "2025-12-30T09:00:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -217,7 +217,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000197",
+      "id": "4725491a-aba1-b1e1-d939-9262a97ee510",
       "timestamp": "2025-12-30T12:00:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -289,7 +289,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000191",
+      "id": "ce1979ff-bb09-0e20-349e-c0c681840b74",
       "timestamp": "2026-01-01T12:08:00+00:00",
       "source": "kernel_ebpf",
       "severity": "HIGH",
@@ -361,7 +361,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000192",
+      "id": "2c749cfb-82ad-61f3-3077-5fa325037585",
       "timestamp": "2026-01-01T12:10:00+00:00",
       "source": "sentinel_correlation",
       "severity": "HIGH",
@@ -442,7 +442,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000193",
+      "id": "1e4a87dd-55b0-b550-4329-3bec2b77a33a",
       "timestamp": "2026-01-01T12:12:00+00:00",
       "source": "kernel_ebpf",
       "severity": "CRITICAL",
@@ -512,7 +512,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000194",
+      "id": "39f5de1b-52d1-2f83-4d2d-00550cb63f07",
       "timestamp": "2026-01-01T12:17:00+00:00",
       "source": "network_zeek",
       "severity": "HIGH",
@@ -567,7 +567,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000195",
+      "id": "669a1624-0148-34da-e4b8-4a7beb3d988b",
       "timestamp": "2026-01-01T12:19:00+00:00",
       "source": "network_zeek",
       "severity": "CRITICAL",
@@ -635,7 +635,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000196",
+      "id": "380a400d-a26a-839a-1736-1370f65a2f45",
       "timestamp": "2026-01-01T12:23:00+00:00",
       "source": "hardware_nvme",
       "severity": "HIGH",
@@ -693,7 +693,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000321",
+      "id": "47111610-9199-ebff-ff43-3883bc9918d1",
       "timestamp": "2026-01-02T00:08:00+00:00",
       "source": "kernel_ebpf",
       "severity": "HIGH",
@@ -778,7 +778,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000322",
+      "id": "930ca0b3-4421-0bd6-db08-a2b1fecb51e7",
       "timestamp": "2026-01-02T00:10:00+00:00",
       "source": "sentinel_correlation",
       "severity": "HIGH",
@@ -867,7 +867,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000323",
+      "id": "e51c5031-905c-a7f7-d22a-cda4e0170a2d",
       "timestamp": "2026-01-02T00:12:00+00:00",
       "source": "kernel_ebpf",
       "severity": "CRITICAL",
@@ -950,7 +950,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000324",
+      "id": "2fce059d-0b5d-b98b-13c2-93471954b947",
       "timestamp": "2026-01-02T00:17:00+00:00",
       "source": "network_zeek",
       "severity": "HIGH",
@@ -1013,7 +1013,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000325",
+      "id": "d74f8547-78b6-a5e6-639b-32ee0043dbbb",
       "timestamp": "2026-01-02T00:19:00+00:00",
       "source": "network_zeek",
       "severity": "CRITICAL",
@@ -1089,7 +1089,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000326",
+      "id": "dbc422ff-fb20-717f-6637-bbc84352b742",
       "timestamp": "2026-01-02T00:23:00+00:00",
       "source": "hardware_nvme",
       "severity": "HIGH",
@@ -1155,7 +1155,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-00000000044d",
+      "id": "be5018b6-213e-5c76-f1e8-aec6691f2160",
       "timestamp": "2026-01-02T09:08:00+00:00",
       "source": "kernel_ebpf",
       "severity": "HIGH",
@@ -1227,7 +1227,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000453",
+      "id": "7a619bb6-f9f0-32e8-cef1-ea2441dedd7f",
       "timestamp": "2026-01-02T09:09:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -1299,7 +1299,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-00000000044e",
+      "id": "dd1b33ee-3323-5f24-bb97-51406073cd7b",
       "timestamp": "2026-01-02T09:10:00+00:00",
       "source": "sentinel_correlation",
       "severity": "HIGH",
@@ -1380,7 +1380,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-00000000044f",
+      "id": "9e560004-5630-145b-8934-8c5d7965d296",
       "timestamp": "2026-01-02T09:12:00+00:00",
       "source": "kernel_ebpf",
       "severity": "CRITICAL",
@@ -1450,7 +1450,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000454",
+      "id": "e3c404e6-6ede-050d-18bc-9f3c11d1a07c",
       "timestamp": "2026-01-02T09:14:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -1522,7 +1522,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000450",
+      "id": "4afdce61-140a-6841-e34a-944e240bdb1a",
       "timestamp": "2026-01-02T09:17:00+00:00",
       "source": "network_zeek",
       "severity": "HIGH",
@@ -1577,7 +1577,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000451",
+      "id": "f30cffc8-68e4-fe17-3d45-fc068f0f26e0",
       "timestamp": "2026-01-02T09:19:00+00:00",
       "source": "network_zeek",
       "severity": "CRITICAL",
@@ -1645,7 +1645,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000455",
+      "id": "c02c90d3-f1a3-739a-0d73-38796818d250",
       "timestamp": "2026-01-02T09:20:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -1717,7 +1717,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-000000000452",
+      "id": "99fdc97d-ceaa-a63a-051d-521152079ad4",
       "timestamp": "2026-01-02T09:23:00+00:00",
       "source": "hardware_nvme",
       "severity": "HIGH",
@@ -1775,7 +1775,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000000c9",
+      "id": "73387f2f-83e1-6389-a120-957e0af79826",
       "timestamp": "2026-01-01T06:08:00+00:00",
       "source": "kernel_ebpf",
       "severity": "HIGH",
@@ -1847,7 +1847,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000000ca",
+      "id": "c50bc3e2-66c7-85ad-c6ca-95c45bde471b",
       "timestamp": "2026-01-01T06:10:00+00:00",
       "source": "sentinel_correlation",
       "severity": "HIGH",
@@ -1922,7 +1922,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000000cb",
+      "id": "9671cecb-af2f-2546-9b61-0150917b986d",
       "timestamp": "2026-01-01T06:12:00+00:00",
       "source": "kernel_ebpf",
       "severity": "CRITICAL",
@@ -1992,7 +1992,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000000cc",
+      "id": "c5bbf5ec-b2d1-f8ea-5e67-170232d2edc8",
       "timestamp": "2026-01-01T06:17:00+00:00",
       "source": "network_zeek",
       "severity": "HIGH",
@@ -2047,7 +2047,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000000cd",
+      "id": "51b008c9-13ff-cc80-9413-90865a2bd5b2",
       "timestamp": "2026-01-01T06:19:00+00:00",
       "source": "network_zeek",
       "severity": "CRITICAL",
@@ -2115,7 +2115,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000000ce",
+      "id": "7a130689-b5de-4073-32b8-2bea5fa5d839",
       "timestamp": "2026-01-01T06:23:00+00:00",
       "source": "hardware_nvme",
       "severity": "HIGH",
@@ -2173,7 +2173,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002be",
+      "id": "74365042-334c-d315-9c0f-f1adb1cc17f7",
       "timestamp": "2026-01-01T21:08:00+00:00",
       "source": "sentinel_correlation",
       "severity": "HIGH",
@@ -2254,7 +2254,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002c0",
+      "id": "c01fbbfc-d5bc-6e88-a596-7a5606a99979",
       "timestamp": "2026-01-01T21:10:00+00:00",
       "source": "network_zeek",
       "severity": "HIGH",
@@ -2309,7 +2309,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002c3",
+      "id": "db3911e9-d6ff-bfce-5ce2-5d4069061d79",
       "timestamp": "2026-01-01T21:11:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -2381,7 +2381,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002c2",
+      "id": "d381fe82-e511-8509-85e1-f485a7eb40cb",
       "timestamp": "2026-01-01T21:12:00+00:00",
       "source": "hardware_nvme",
       "severity": "HIGH",
@@ -2439,7 +2439,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002c4",
+      "id": "00071075-587f-be5c-8dfb-4aa550d1c41b",
       "timestamp": "2026-01-01T21:16:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -2511,7 +2511,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002c1",
+      "id": "8e7855be-424f-f8ab-f6ff-5f303495a417",
       "timestamp": "2026-01-01T21:17:00+00:00",
       "source": "network_zeek",
       "severity": "CRITICAL",
@@ -2579,7 +2579,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002bd",
+      "id": "15851329-7406-13c3-a185-331e301d3c39",
       "timestamp": "2026-01-01T21:19:00+00:00",
       "source": "kernel_ebpf",
       "severity": "HIGH",
@@ -2651,7 +2651,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002c5",
+      "id": "e790ae47-e345-dc8b-92fe-05462aaddc30",
       "timestamp": "2026-01-01T21:21:00+00:00",
       "source": "kernel_ebpf",
       "severity": "INFO",
@@ -2723,7 +2723,7 @@
   },
   {
     "event": {
-      "id": "00000000-0000-0000-0000-0000000002bf",
+      "id": "e9d4ee38-1e3d-12d1-1a7c-98d0cf4c7f23",
       "timestamp": "2026-01-01T21:23:00+00:00",
       "source": "kernel_ebpf",
       "severity": "CRITICAL",
@@ -2787,6 +2787,594 @@
       0.0,
       1.0,
       0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "timestamp": "2026-03-01T00:00:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "triage_classification",
+        "family": "loader",
+        "sha256": "ABCDEF0000000000000000000000000000000000000000000000000000000000",
+        "dest_ips": [
+          "203.0.113.9",
+          "203.0.113.9",
+          "198.51.100.7"
+        ],
+        "source_path": "/tmp/x"
+      }
+    },
+    "delta_seconds": 0.0,
+    "entities": [
+      "host:edge-host",
+      "hash:abcdef0000000000000000000000000000000000000000000000000000000000",
+      "ip:203.0.113.9",
+      "ip:198.51.100.7"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "hash:abcdef0000000000000000000000000000000000000000000000000000000000",
+        "identified_by"
+      ],
+      [
+        "host:edge-host",
+        "ip:203.0.113.9",
+        "connects_to"
+      ],
+      [
+        "host:edge-host",
+        "ip:198.51.100.7",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.6000000238418579,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000002",
+      "timestamp": "2026-03-01T00:01:00.123456789+00:00",
+      "source": "network_zeek",
+      "severity": "WARNING",
+      "metadata": {
+        "hostname": "fallback-host"
+      },
+      "kind": {
+        "type": "octet_reversal_detected",
+        "forward_ip": "142.251.211.170",
+        "reversed_ip": "170.211.251.142",
+        "ptr_query": "MiXeD.PTR.Example.COM..",
+        "forward_asn": "AS15169",
+        "reversed_asn": "AS21852"
+      }
+    },
+    "delta_seconds": 60.123456,
+    "entities": [
+      "host:fallback-host",
+      "ip:142.251.211.170",
+      "ip:170.211.251.142",
+      "domain:mixed.ptr.example.com"
+    ],
+    "edges": [
+      [
+        "host:fallback-host",
+        "ip:142.251.211.170",
+        "connects_to"
+      ],
+      [
+        "host:fallback-host",
+        "ip:170.211.251.142",
+        "connects_to"
+      ],
+      [
+        "domain:mixed.ptr.example.com",
+        "ip:142.251.211.170",
+        "resolves_or_connects"
+      ],
+      [
+        "domain:mixed.ptr.example.com",
+        "ip:170.211.251.142",
+        "resolves_or_connects"
+      ],
+      [
+        "host:fallback-host",
+        "domain:mixed.ptr.example.com",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.25,
+      0.7400000095367432,
+      0.34274131059646606,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000003",
+      "timestamp": "2026-03-01 00:02:00",
+      "source": "network_suricata",
+      "severity": "high",
+      "metadata": null,
+      "kind": {
+        "type": "unknown_future_kind",
+        "sni": "cdn.example",
+        "src_ip": "192.0.2.1",
+        "gateway_ip": "192.0.2.254"
+      }
+    },
+    "delta_seconds": 59.876544,
+    "entities": [
+      "host:unknown-host",
+      "ip:192.0.2.1",
+      "ip:192.0.2.254"
+    ],
+    "edges": [
+      [
+        "host:unknown-host",
+        "ip:192.0.2.1",
+        "connects_to"
+      ],
+      [
+        "host:unknown-host",
+        "ip:192.0.2.254",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.18000000715255737,
+      0.34240400791168213,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000004",
+      "timestamp": "2026-03-01T00:03:00",
+      "source": "custom_source",
+      "severity": "WEIRD",
+      "metadata": [],
+      "kind": {
+        "type": "mac_flapping",
+        "gateway_ip": "192.0.2.254",
+        "old_mac": "aa:bb",
+        "new_mac": "cc:dd"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:unknown-host",
+      "ip:192.0.2.254"
+    ],
+    "edges": [
+      [
+        "host:unknown-host",
+        "ip:192.0.2.254",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.15000000596046448,
+      0.6399999856948853,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000005",
+      "timestamp": "2026-03-01T00:04:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "socket_lineage",
+        "tgid": 4100,
+        "exe_path": "/usr/bin/x",
+        "exe_sha256": "",
+        "dst_ip": "",
+        "dst_port": 443,
+        "is_signed": true
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "process:edge-host:4100"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "process:edge-host:4100",
+        "executes"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.34257280826568604,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000006",
+      "timestamp": "2026-03-01T00:05:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "CRITICAL",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "suspicious_beacon",
+        "pid": 0,
+        "tgid": 0,
+        "exe_path": "/tmp/y",
+        "exe_sha256": "DEADBEEF11111111111111111111111111111111111111111111111111111111",
+        "dst_ip": "203.0.113.9",
+        "asn_owner": "Example Transit",
+        "user": "SVC-Account",
+        "session_id": 0,
+        "cloud_resource": "ARN:AWS:S3:::Bucket/Key"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "process:edge-host:0",
+      "hash:deadbeef11111111111111111111111111111111111111111111111111111111",
+      "ip:203.0.113.9",
+      "user:svc-account",
+      "cloud:arn:aws:s3:::bucket/key"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "process:edge-host:0",
+        "executes"
+      ],
+      [
+        "process:edge-host:0",
+        "hash:deadbeef11111111111111111111111111111111111111111111111111111111",
+        "identified_by"
+      ],
+      [
+        "process:edge-host:0",
+        "ip:203.0.113.9",
+        "connects_to"
+      ],
+      [
+        "user:svc-account",
+        "host:edge-host",
+        "authenticates_to"
+      ],
+      [
+        "user:svc-account",
+        "process:edge-host:0",
+        "owns"
+      ],
+      [
+        "user:svc-account",
+        "cloud:arn:aws:s3:::bucket/key",
+        "accesses"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7200000286102295,
+      0.34257280826568604,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000007",
+      "timestamp": "2026-03-01T00:06:00+00:00",
+      "source": "hardware_rtc",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "rtc_clock_divergence",
+        "software_time": "x",
+        "rtc_time": "y",
+        "drift_seconds": 90.0,
+        "username": "Backup-Operator",
+        "sid": "S-1-5-21",
+        "arn": "arn:aws:iam::1:role/Admin",
+        "target_host": "server-1",
+        "device": "rtc0"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "device:edge-host:rtc0",
+      "user:backup-operator",
+      "session:edge-host:S-1-5-21",
+      "cloud:arn:aws:iam::1:role/admin"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "device:edge-host:rtc0",
+        "contains"
+      ],
+      [
+        "user:backup-operator",
+        "host:edge-host",
+        "authenticates_to"
+      ],
+      [
+        "user:backup-operator",
+        "cloud:arn:aws:iam::1:role/admin",
+        "accesses"
+      ],
+      [
+        "host:edge-host",
+        "session:edge-host:S-1-5-21",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.3799999952316284,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000008",
+      "timestamp": "2026-03-01T00:07:00+00:00",
+      "source": "sentinel_correlation",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "bgp_anomaly",
+        "kind": {
+          "kind": "route_leak_benign"
+        },
+        "prefix": "203.0.113.0/25",
+        "observed_origin_asn": 0,
+        "legitimate_origin_asn": null,
+        "confidence": "low"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "prefix:203.0.113.0/25",
+      "asn:0"
+    ],
+    "edges": [
+      [
+        "prefix:203.0.113.0/25",
+        "asn:0",
+        "originated_by"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.47999998927116394,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000009",
+      "timestamp": "2026-03-01T00:08:00+00:00",
+      "source": "network_zeek",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "hsts_time_manipulation",
+        "domain": "Update-CDN.Example.",
+        "cert_expiry": "2025-12-01",
+        "ntp_shift_seconds": 90.0,
+        "account": "",
+        "user": null
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "domain:update-cdn.example"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "domain:update-cdn.example",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.7799999713897705,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
       0.0,
       0.0
     ]

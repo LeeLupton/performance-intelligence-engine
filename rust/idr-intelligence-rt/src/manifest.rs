@@ -100,6 +100,61 @@ impl Manifest {
                 manifest.format
             ));
         }
+        manifest.validate()?;
         Ok(manifest)
+    }
+
+    /// Reject internally inconsistent bundles up front — every rule below
+    /// guards an index or division that would otherwise panic or emit NaN at
+    /// scoring time.
+    fn validate(&self) -> Result<(), String> {
+        let names = self.features.names.len();
+        if names != self.model.feature_dim {
+            return Err(format!(
+                "manifest features.names has {names} entries but model.feature_dim is {}",
+                self.model.feature_dim
+            ));
+        }
+        if names < crate::features::FEATURE_SLOTS {
+            return Err(format!(
+                "feature layout requires at least {} named features, got {names}",
+                crate::features::FEATURE_SLOTS
+            ));
+        }
+        if let Some(half_life) = self.model.decay_half_life
+            && (half_life <= 0.0 || !half_life.is_finite())
+        {
+            return Err(format!(
+                "decay_half_life must be positive and finite, got {half_life}"
+            ));
+        }
+        if self.features.delta_log_divisor <= 0.0 || !self.features.delta_log_divisor.is_finite() {
+            return Err(format!(
+                "delta_log_divisor must be positive and finite, got {}",
+                self.features.delta_log_divisor
+            ));
+        }
+        if let Some(stats) = &self.feature_stats {
+            if stats.bin_edges.len() < 2 {
+                return Err("feature_stats.bin_edges needs at least two edges".to_string());
+            }
+            if stats.histograms.len() != self.model.feature_dim {
+                return Err(format!(
+                    "feature_stats.histograms has {} rows but model.feature_dim is {}",
+                    stats.histograms.len(),
+                    self.model.feature_dim
+                ));
+            }
+            let bins = stats.bin_edges.len() - 1;
+            if stats.histograms.iter().any(|row| row.len() != bins) {
+                return Err(format!(
+                    "every feature_stats histogram row must have {bins} bins"
+                ));
+            }
+        }
+        if !self.graphs.head.inputs.iter().any(|name| name == "outputs") {
+            return Err("head graph must declare an 'outputs' input".to_string());
+        }
+        Ok(())
     }
 }

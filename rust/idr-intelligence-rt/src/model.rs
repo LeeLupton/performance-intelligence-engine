@@ -71,14 +71,19 @@ impl StepSession {
 pub struct HeadSession {
     proto: tract_onnx::prelude::InferenceModel,
     hidden: usize,
+    /// Models without graph layers never read the adjacency, so the exporter
+    /// prunes that input from head.onnx; the manifest's declared input list
+    /// decides whether it exists and gets fed.
+    has_adjacency: bool,
     cache: HashMap<usize, Arc<TypedRunnableModel>>,
 }
 
 impl HeadSession {
-    pub fn load(path: &Path, hidden: usize) -> TractResult<Self> {
+    pub fn load(path: &Path, hidden: usize, has_adjacency: bool) -> TractResult<Self> {
         Ok(Self {
             proto: tract_onnx::onnx().model_for_path(path)?,
             hidden,
+            has_adjacency,
             cache: HashMap::new(),
         })
     }
@@ -91,20 +96,23 @@ impl HeadSession {
         nodes: usize,
     ) -> TractResult<(f32, Vec<f32>)> {
         if !self.cache.contains_key(&nodes) {
-            let plan = self
+            let mut model = self
                 .proto
                 .clone()
-                .with_input_fact(0, f32::fact([nodes, self.hidden]).into())?
-                .with_input_fact(1, f32::fact([nodes, nodes]).into())?
-                .into_optimized()?
-                .into_runnable()?;
+                .with_input_fact(0, f32::fact([nodes, self.hidden]).into())?;
+            if self.has_adjacency {
+                model = model.with_input_fact(1, f32::fact([nodes, nodes]).into())?;
+            }
+            let plan = model.into_optimized()?.into_runnable()?;
             self.cache.insert(nodes, plan);
         }
         let plan = &self.cache[&nodes];
-        let result = plan.run(tvec!(
-            Tensor::from_shape(&[nodes, self.hidden], outputs)?.into(),
-            Tensor::from_shape(&[nodes, nodes], adjacency)?.into(),
-        ))?;
+        let mut inputs: TVec<TValue> =
+            tvec!(Tensor::from_shape(&[nodes, self.hidden], outputs)?.into());
+        if self.has_adjacency {
+            inputs.push(Tensor::from_shape(&[nodes, nodes], adjacency)?.into());
+        }
+        let result = plan.run(inputs)?;
         let graph_logit = result[0].view().as_slice::<f32>()?[0];
         Ok((graph_logit, result[1].view().as_slice::<f32>()?.to_vec()))
     }

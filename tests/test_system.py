@@ -1318,6 +1318,7 @@ def test_attention_pool_fully_masked_row_yields_zero_weights():
 
 
 def _export_bundle(base_dir, model, model_version="test-export"):
+    pytest.importorskip("onnx")  # torch's TorchScript exporter needs the onnx package
     from idr_intelligence.export import export_streaming_bundle
 
     out = Path(base_dir) / "bundle"
@@ -1341,6 +1342,17 @@ def test_export_manifest_matches_runtime(tmp_path):
     assert manifest["feature_schema_hash"] == feature_schema_hash()
     assert manifest["calibration"]["label"] == model.calibration_label()
     assert manifest["features"]["names"] == list(FEATURE_NAMES)
+    # The bridge scores with the manifest's constants; they must be the very
+    # objects feature extraction uses, not re-typed literals.
+    from idr_intelligence.features import (
+        DELTA_LOG_DIVISOR,
+        KIND_PRIOR_DEFAULT,
+        SEVERITY_DEFAULT,
+    )
+
+    assert manifest["features"]["severity_default"] == SEVERITY_DEFAULT
+    assert manifest["features"]["kind_prior_default"] == KIND_PRIOR_DEFAULT
+    assert manifest["features"]["delta_log_divisor"] == DELTA_LOG_DIVISOR
     assert manifest["model"]["decay_half_life"] == 3600.0
     assert manifest["graphs"]["step"]["inputs"] == ["x_t", "state", "output", "delta_t"]
     assert (out / "step.onnx").exists() and (out / "head.onnx").exists()
@@ -1454,6 +1466,7 @@ def test_onnx_stream_scorer_drift_matches_streaming(tmp_path):
 
 
 def test_cli_export_roundtrip(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("onnx")
     weights = tmp_path / "model.pt"
     save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode="time_aware"), weights)
     out = tmp_path / "bundle"
@@ -1465,3 +1478,148 @@ def test_cli_export_roundtrip(tmp_path, monkeypatch, capsys):
     assert manifest["model_version"] == "model.pt"
     assert manifest["model"]["time_mode"] == "time_aware"
     assert (out / "step.onnx").exists() and (out / "head.onnx").exists()
+
+
+def test_model_rejects_nonpositive_decay_half_life():
+    with pytest.raises(ValueError, match="decay_half_life"):
+        CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, decay_half_life=0.0)
+
+
+def test_ranking_tie_break_is_first_seen():
+    # ADR-31: all ranking call sites use a stable argsort, so exact ties keep
+    # first-seen order and suppressed (-inf) entries are sliced then filtered.
+    scores = np.array([0.5, 0.9, 0.5, 0.5, 0.7, -np.inf])
+    ranked = np.argsort(-scores, kind="stable")[:5]
+    ranked = [index for index in ranked if np.isfinite(scores[index])]
+    assert ranked == [1, 4, 0, 2, 3]
+    scores = np.array([-np.inf, 0.4, 0.6])
+    ranked = np.argsort(-scores, kind="stable")[:3]
+    assert [index for index in ranked if np.isfinite(scores[index])] == [2, 1]
+
+
+def test_onnx_scorer_rejects_schema_mismatch(tmp_path):
+    pytest.importorskip("onnxruntime")
+    from idr_intelligence.export import OnnxStreamScorer
+
+    out, _ = _export_bundle(tmp_path, CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4))
+    manifest = json.loads((out / "manifest.json").read_text())
+    manifest["feature_schema_hash"] = "0" * 32
+    (out / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(SchemaMismatchError):
+        OnnxStreamScorer(out)
+
+
+def test_export_no_gnn_head_omits_adjacency(tmp_path):
+    pytest.importorskip("onnxruntime")
+    from idr_intelligence.export import OnnxStreamScorer
+    from idr_intelligence.streaming import StreamingScorer
+
+    torch.manual_seed(13)
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, use_gnn=False)
+    out, manifest = _export_bundle(tmp_path, model)
+    assert manifest["graphs"]["head"]["inputs"] == ["outputs"]  # exporter prunes the unread adjacency
+    ordered = sorted(simulate_campaign(1, 8), key=lambda event: (event.timestamp, event.id))
+    reference = StreamingScorer(model, model_version="test-export")
+    exported = OnnxStreamScorer(out)
+    for event in ordered:
+        reference.ingest(event)
+        exported.ingest(event)
+    want = reference.finding()
+    got = exported.finding()
+    assert got.escalation_probability == pytest.approx(want.escalation_probability, abs=1e-4)
+    # Set comparison: exact ties among isomorphic entities may permute under
+    # cross-runtime float drift; order pinning lives in the Rust golden.
+    assert set(got.related_entities) == set(want.related_entities)
+    assert got.observed_attack_stages == want.observed_attack_stages
+
+
+def test_export_uniform_pooling_bundle_parity(tmp_path):
+    pytest.importorskip("onnxruntime")
+    onnx = pytest.importorskip("onnx")
+    from idr_intelligence.export import OnnxStreamScorer
+    from idr_intelligence.streaming import StreamingScorer
+
+    torch.manual_seed(17)
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, pooling="uniform")
+    out, _ = _export_bundle(tmp_path, model)
+    ops = {node.op_type for node in onnx.load(str(out / "head.onnx")).graph.node}
+    assert "IsInf" not in ops  # the tract runtime cannot evaluate IsInf (ADR-30)
+    ordered = sorted(simulate_campaign(1, 9), key=lambda event: (event.timestamp, event.id))
+    reference = StreamingScorer(model, model_version="test-export")
+    exported = OnnxStreamScorer(out)
+    for event in ordered:
+        reference.ingest(event)
+        exported.ingest(event)
+    want = reference.finding()
+    got = exported.finding()
+    assert got.raw_escalation_probability == pytest.approx(want.raw_escalation_probability, abs=1e-4)
+    assert set(got.related_entities) == set(want.related_entities)
+
+
+RUST_FIXTURES = Path(__file__).resolve().parent.parent / "rust" / "idr-intelligence-rt" / "tests" / "fixtures"
+
+
+def _fixture_events(name):
+    rows = [json.loads(line) for line in (RUST_FIXTURES / name).read_text().splitlines() if line.strip()]
+    return sorted((IdrEvent.from_dict(row) for row in rows), key=lambda event: (event.timestamp, event.id))
+
+
+def _assert_matches_golden(finding, golden, pin_ranking=True):
+    payload = json.loads(json.dumps(finding.to_dict()))
+    for key, value in golden.items():
+        if key in ("scored_at", "evictions"):
+            continue
+        if not pin_ranking and key in ("related_entities", "evidence_event_ids"):
+            # No-GNN streams tie exactly on isomorphic entities; order is
+            # runtime-dependent by nature (see the fixture generator).
+            if key == "related_entities":
+                assert set(payload[key]) == set(value), key
+            continue
+        if key in ("escalation_probability", "raw_escalation_probability"):
+            assert payload[key] == pytest.approx(value, abs=1e-4), key
+        elif key == "feature_drift" and value is not None:
+            assert payload[key]["flagged_features"] == value["flagged_features"]
+            assert payload[key]["psi_max"] == pytest.approx(value["psi_max"], abs=1e-4)
+            assert payload[key]["psi_mean"] == pytest.approx(value["psi_mean"], abs=1e-4)
+        else:
+            assert payload[key] == value, key
+
+
+def test_rust_fixture_goldens_are_fresh():
+    """Freshness gate: the committed cross-language goldens must reproduce under
+    the CURRENT engine. A semantic change to extraction/scoring bookkeeping
+    without regenerating the fixtures fails here instead of silently pinning
+    the Rust bridge to a stale snapshot of Python."""
+    pytest.importorskip("onnxruntime")
+    from idr_intelligence.bounded_graph import GraphBudget
+    from idr_intelligence.export import OnnxStreamScorer
+
+    for case, bundle, budget, suppressions in (
+        ("malicious", RUST_FIXTURES, None, None),
+        ("benign", RUST_FIXTURES, None, None),
+        ("budget", RUST_FIXTURES, 6, ["ip:"]),
+        ("nognn", RUST_FIXTURES / "nognn", None, None),
+    ):
+        events = _fixture_events("events_malicious.ndjson" if case in ("budget", "nognn") else f"events_{case}.ndjson")
+        scorer = OnnxStreamScorer(bundle, budget=GraphBudget(max_nodes=budget) if budget else None)
+        for event in events:
+            scorer.ingest(event)
+        finding = scorer.finding(suppressions=suppressions)
+        golden_name = "expected_budget.json" if case == "budget" else ("expected_malicious.json" if case == "nognn" else f"expected_{case}.json")
+        golden = json.loads((bundle / golden_name).read_text() if case == "nognn" else (RUST_FIXTURES / golden_name).read_text())
+        _assert_matches_golden(finding, golden, pin_ranking=(case != "nognn"))
+        if case == "budget":
+            assert [record.entity for record in scorer.evictions] == [record["entity"] for record in golden["evictions"]]
+
+
+def test_rust_feature_vectors_are_fresh():
+    from idr_intelligence.features import project_event
+
+    entries = json.loads((RUST_FIXTURES / "feature_vectors.json").read_text())
+    assert len(entries) > 40
+    for entry in entries:
+        event = IdrEvent.from_dict(entry["event"])
+        projection = project_event(event, delta_seconds=entry["delta_seconds"])
+        assert list(projection.entities) == entry["entities"], event.id
+        assert [list(edge) for edge in projection.edges] == entry["edges"], event.id
+        assert projection.features.tolist() == entry["features"], event.id

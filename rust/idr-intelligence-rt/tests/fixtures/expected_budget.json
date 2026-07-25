@@ -1,5 +1,5 @@
 {
-  "campaign_id": "idr-campaign-00000000",
+  "campaign_id": "idr-campaign-ca21edca",
   "escalation_probability": 0.462229,
   "raw_escalation_probability": 0.509661,
   "calibration": "affine:scale=0.740741,bias=-0.180000",
@@ -9,37 +9,37 @@
       "tactic": "execution",
       "technique": "T1059",
       "kind_type": "socket_lineage",
-      "first_event_id": "00000000-0000-0000-0000-00000000019a"
+      "first_event_id": "ca21edca-52a9-fd7d-0477-d3cee6545d0b"
     },
     {
       "tactic": "collection",
       "technique": "T1557",
       "kind_type": "bgp_anomaly",
-      "first_event_id": "00000000-0000-0000-0000-000000000192"
+      "first_event_id": "2c749cfb-82ad-61f3-3077-5fa325037585"
     },
     {
       "tactic": "command-and-control",
       "technique": "T1071",
       "kind_type": "suspicious_beacon",
-      "first_event_id": "00000000-0000-0000-0000-000000000193"
+      "first_event_id": "1e4a87dd-55b0-b550-4329-3bec2b77a33a"
     },
     {
       "tactic": "defense-evasion",
       "technique": "T1562",
       "kind_type": "ntp_time_shift",
-      "first_event_id": "00000000-0000-0000-0000-000000000194"
+      "first_event_id": "39f5de1b-52d1-2f83-4d2d-00550cb63f07"
     },
     {
       "tactic": "credential-access",
       "technique": "T1557",
       "kind_type": "hsts_time_manipulation",
-      "first_event_id": "00000000-0000-0000-0000-000000000195"
+      "first_event_id": "669a1624-0148-34da-e4b8-4a7beb3d988b"
     },
     {
       "tactic": "exfiltration",
       "technique": "T1041",
       "kind_type": "nvme_latency_anomaly",
-      "first_event_id": "00000000-0000-0000-0000-000000000196"
+      "first_event_id": "380a400d-a26a-839a-1736-1370f65a2f45"
     }
   ],
   "related_entities": [
@@ -54,15 +54,15 @@
     "ip:198.51.100.38"
   ],
   "evidence_event_ids": [
-    "00000000-0000-0000-0000-000000000454",
-    "00000000-0000-0000-0000-000000000455",
-    "00000000-0000-0000-0000-00000000044d",
-    "00000000-0000-0000-0000-000000000453",
-    "00000000-0000-0000-0000-00000000044e",
-    "00000000-0000-0000-0000-00000000044f",
-    "00000000-0000-0000-0000-000000000450",
-    "00000000-0000-0000-0000-000000000451",
-    "00000000-0000-0000-0000-000000000452"
+    "e3c404e6-6ede-050d-18bc-9f3c11d1a07c",
+    "c02c90d3-f1a3-739a-0d73-38796818d250",
+    "be5018b6-213e-5c76-f1e8-aec6691f2160",
+    "7a619bb6-f9f0-32e8-cef1-ea2441dedd7f",
+    "dd1b33ee-3323-5f24-bb97-51406073cd7b",
+    "9e560004-5630-145b-8934-8c5d7965d296",
+    "4afdce61-140a-6841-e34a-944e240bdb1a",
+    "f30cffc8-68e4-fe17-3d45-fc068f0f26e0",
+    "99fdc97d-ceaa-a63a-051d-521152079ad4"
   ],
   "model_version": "fixture-v1",
   "graph_nodes": 6,
@@ -80,31 +80,17 @@
   },
   "engine_version": "0.1.0",
   "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
-  "scored_at": "2026-07-24T03:54:16.760067+00:00",
+  "scored_at": "2026-07-25T23:11:59.461535+00:00",
   "feature_drift": {
-    "psi_max": 12.378141,
-    "psi_mean": 10.450904,
+    "psi_max": 3.435571,
+    "psi_mean": 0.628793,
     "flagged_features": [
       "severity",
       "kind_prior",
       "delta_seconds_log",
       "has_process",
-      "unsigned_process",
-      "has_ip",
       "has_hash",
-      "has_domain",
-      "has_asn_or_prefix",
-      "has_hardware",
-      "concurrent_exfil",
-      "production_bgp_anomaly",
       "source_kernel",
-      "source_network",
-      "source_hardware",
-      "source_correlation",
-      "kind_hash_0",
-      "kind_hash_1",
-      "kind_hash_2",
-      "kind_hash_3",
       "has_user",
       "has_identity_pivot"
     ]

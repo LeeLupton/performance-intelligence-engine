@@ -8,7 +8,7 @@ from datetime import datetime
 import numpy as np
 
 from .bounded_graph import EvictionRecord, GraphBudget
-from .features import FEATURE_DIM, project_event
+from .features import DELTA_LOG_DIVISOR, FEATURE_DIM, project_event
 from .schema import IdrEvent
 
 TIME_MODES = ("global", "per_entity", "time_aware")
@@ -17,7 +17,7 @@ _DELTA_FEATURE_INDEX = 2  # delta_seconds_log in FEATURE_NAMES
 
 def _normalize_delta(seconds: float) -> float:
     """log1p seconds compressed to ~[0,1], matching project_event's feature scaling."""
-    return float(np.log1p(max(seconds, 0.0)) / 12.0)
+    return float(np.log1p(max(seconds, 0.0)) / DELTA_LOG_DIVISOR)
 
 
 def degree_normalize(adjacency: np.ndarray) -> np.ndarray:

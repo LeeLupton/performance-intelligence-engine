@@ -341,7 +341,8 @@
       "W13: S6 step() cell (shared _recurrence, streaming step(), lossless snapshot/restore, numerical equivalence to forward) \u2014 enables W15/W17",
       "W16: campaign-identity registry (campaigns.py; weighted durable-entity fingerprint matching, content-addressed IDs, opt-in via score_events(registry=)/CLI --registry; finding v7 adds continues_campaign + windows_observed)",
       "W15: streaming scorer (streaming.py: StreamingScorer over W13 step() + bounded_graph, CLI stream subcommand; equivalence to batch pinned across time modes/decay/drift)",
-      "W17: ONNX export + Rust serving bridge (export.py + CLI export; rust/idr-intelligence-rt on tract, golden-pinned to StreamingScorer; rust/idr-common-parity wire proof against the real idr_common from the idr-main tree; CI extended with cargo fmt/clippy/test). ROADMAP COMPLETE - all 17 workstreams shipped"
+      "W17: ONNX export + Rust serving bridge (export.py + CLI export; rust/idr-intelligence-rt on tract, golden-pinned to StreamingScorer; rust/idr-common-parity wire proof against the real idr_common from the idr-main tree; CI extended with cargo fmt/clippy/test). ROADMAP COMPLETE - all 17 workstreams shipped",
+      "W17 adversarial review (65-agent workflow: 5 lenses -> 30 raw findings -> 2 refuters each -> 19 confirmed) and fix slice: use_gnn=False export now declares/feeds the head's real input signature (nognn golden bundle added); OnnxStreamScorer verifies feature_schema_hash and reads evidence_limit from the manifest; manifest constants are imported from features.py (SEVERITY_DEFAULT/KIND_PRIOR_DEFAULT/DELTA_LOG_DIVISOR), test-tied; _masked_max avoids the IsInf op (uniform-pooling bundles tract-loadable, test-pinned); CampaignModel rejects non-positive decay_half_life; Rust truncates wire timestamps to microseconds (idr-main emits nanoseconds), accepts Python's falsy-metadata and common naive-ISO shapes, validates manifests (feature-name length, decay, stats shape) instead of panicking, and feeds the head per the manifest's input list; fixtures regenerated with content-addressed ids (campaign_id now discriminates), a real drift baseline (some-but-not-all features flag), budget-case gap checks, salt-searched tie-free rankings, and 9 hand-authored edge-case events covering every extraction branch; parity.rs adds field-set equality + manifest-rejection tests; ranked_indices extracted with tie unit tests both sides; freshness gates in test_system.py replay all committed goldens + feature vectors against the current engine so staleness fails CI. Deferred with documentation: per-event entity caps (parity with Python; trust boundary documented in the crate README), exotic ISO-8601 shapes, rolling Arch rust toolchain in CI (same class as the ruff pin \u2014 revisit on first breakage)"
     ],
     "active": [],
     "blocked": []
@@ -387,10 +388,20 @@
         "cmd": "cargo test (rust/idr-common-parity, machine-local vs /home/lee/Desktop/CYBER/idr-main)",
         "when": "2026-07-24",
         "result": "3/3: idr_common wire format round-trips through the bridge; note published github idr repo is stale vs local tree (lacks ExternalTriage/TriageClassification/BgpAnomaly)"
+      },
+      {
+        "cmd": "Workflow w17-adversarial-review (65 agents, 5 lenses, adversarial 2-refuter verification)",
+        "when": "2026-07-25",
+        "result": "30 raw findings, 19 confirmed, 11 refuted; all confirmed findings fixed or explicitly deferred with documentation"
+      },
+      {
+        "cmd": "python -m pytest -q && ruff && python -m mypy src && benchmark && cargo fmt/clippy/test (both crates)",
+        "when": "2026-07-25",
+        "result": "114 python tests, 12 rust bridge tests, 3 idr-common wire tests, benchmark floors green after review fixes"
       }
     ],
     "tests": [
-      "tests: 107 python (adds W17: ORT step/head parity across time modes incl. dynamic node axis, OnnxStreamScorer==StreamingScorer across time modes + budget/suppressions + drift, manifest-matches-runtime, S6-required guard, attention NaN-guard, CLI export round-trip) + 6 rust bridge tests (golden malicious/benign/budget streams field-for-field vs torch reference, feature-vector exact parity, out-of-order rejection, empty-finding error) + 3 machine-local wire tests (bridge parses idr_common-serialized events incl. TriageClassification/BgpAnomaly, scores an idr_common stream end-to-end, goldens deserialize into real idr_common::IdrEvent)"
+      "tests: 114 python (adds W17 review coverage: no-GNN export parity, uniform-pooling export without IsInf, schema-hash rejection, manifest constants == code constants, decay validation, stable tie-break semantics, fixture-freshness gates replaying all committed goldens + feature vectors) + 12 rust bridge tests (3 order-pinned goldens + reduced-comparison nognn golden + manifest rejection + feature vectors incl. 9 edge-case events + ranking/histogram/rounding units) + 3 machine-local idr-common wire tests"
     ],
     "benchmarks": [
       {
@@ -507,8 +518,8 @@
     "source_digest": "git:2c26ef2-plus-w17",
     "state_vector": [],
     "latest_event": {
-      "when": "2026-07-24",
-      "summary": "W17 shipped on the user's machine: ONNX export bundle (step cell + relational head + constants manifest), Rust idr-intelligence-rt bridge on tract reproducing StreamingScorer findings field-for-field (golden-pinned), machine-local wire proof against the real idr_common crate. ROADMAP COMPLETE: 17/17 workstreams"
+      "when": "2026-07-25",
+      "summary": "W17 review fixes shipped after a 65-agent adversarial workflow confirmed 19 findings (serving crash on use_gnn=False exports, ns-vs-us wire timestamps, missing schema-hash gate, fixture degeneracies); all fixed or documented, fixtures regenerated, freshness gates added. ROADMAP COMPLETE: 17/17"
     }
   }
 }

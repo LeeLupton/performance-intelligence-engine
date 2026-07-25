@@ -14,6 +14,11 @@ use crate::manifest::FeatureSpec;
 /// `delta_seconds_log` position in the feature vector (graph.py `_DELTA_FEATURE_INDEX`).
 pub const DELTA_FEATURE_INDEX: usize = 2;
 
+/// Highest hardcoded slot written by `project_event` plus one. The manifest's
+/// `features.names` must be at least this long (validated at bundle load) or
+/// the fixed-layout writes below would be out of bounds.
+pub const FEATURE_SLOTS: usize = 22;
+
 /// One event decomposed into entities, typed edges, and a feature vector.
 #[derive(Debug, Clone)]
 pub struct Projection {
@@ -22,8 +27,9 @@ pub struct Projection {
     pub features: Vec<f32>,
 }
 
-/// Python truthiness for the JSON values feature extraction branches on.
-fn truthy(value: Option<&Value>) -> bool {
+/// Python truthiness for the JSON values feature extraction (and the envelope
+/// metadata check in event.rs) branch on.
+pub(crate) fn truthy(value: Option<&Value>) -> bool {
     match value {
         None | Some(Value::Null) => false,
         Some(Value::Bool(flag)) => *flag,

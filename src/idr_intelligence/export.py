@@ -26,11 +26,17 @@ from .attack import KIND_TO_ATTACK, TACTIC_ORDER, next_stage_from_stages
 from .bounded_graph import EvictionRecord, GraphBudget
 from .config import DEFAULT_CONFIG, ENGINE_VERSION
 from .evidence import apply_suppressions
-from .features import FEATURE_NAMES, project_event
+from .features import (
+    DELTA_LOG_DIVISOR,
+    FEATURE_NAMES,
+    KIND_PRIOR_DEFAULT,
+    SEVERITY_DEFAULT,
+    project_event,
+)
 from .graph import _DELTA_FEATURE_INDEX, _normalize_delta, degree_normalize
 from .models import CampaignModel, SelectiveSSM
 from .pipeline import IntelligenceFinding, psi_drift
-from .registry import feature_schema_hash
+from .registry import SchemaMismatchError, feature_schema_hash
 from .schema import KIND_PRIOR, SEVERITY_WEIGHT, IdrEvent
 from .streaming import EVIDENCE_LIMIT
 
@@ -88,6 +94,10 @@ def export_streaming_bundle(model: CampaignModel, out_dir: str | Path, model_ver
     time_aware = model.time_mode == "time_aware"
 
     step_inputs = ["x_t", "state", "output"] + (["delta_t"] if time_aware else [])
+    # Without graph layers, relational_head never reads the adjacency, so the
+    # exporter prunes that input from head.onnx — the manifest must declare the
+    # signature the graph actually has, and consumers feed by this list.
+    head_inputs = ["outputs"] + (["adjacency"] if model.use_gnn else [])
     step_args: tuple[torch.Tensor, ...] = (
         torch.zeros(1, model.feature_dim),
         torch.zeros(1, model.hidden_dim, model.state_dim),
@@ -111,13 +121,16 @@ def export_streaming_bundle(model: CampaignModel, out_dir: str | Path, model_ver
             opset_version=OPSET,
             dynamo=False,
         )
+        head_dynamic_axes = {"outputs": {0: "nodes"}, "node_logits": {0: "nodes"}}
+        if model.use_gnn:
+            head_dynamic_axes["adjacency"] = {0: "nodes", 1: "nodes"}
         torch.onnx.export(
             _RelationalHead(model),
             head_args,
             str(out / "head.onnx"),
             input_names=["outputs", "adjacency"],
             output_names=["graph_logit", "node_logits"],
-            dynamic_axes={"outputs": {0: "nodes"}, "adjacency": {0: "nodes", 1: "nodes"}, "node_logits": {0: "nodes"}},
+            dynamic_axes=head_dynamic_axes,
             opset_version=OPSET,
             dynamo=False,
         )
@@ -145,17 +158,17 @@ def export_streaming_bundle(model: CampaignModel, out_dir: str | Path, model_ver
         "features": {
             "names": list(FEATURE_NAMES),
             "severity_weight": dict(SEVERITY_WEIGHT),
-            "severity_default": 0.15,
+            "severity_default": SEVERITY_DEFAULT,
             "kind_prior": dict(KIND_PRIOR),
-            "kind_prior_default": 0.18,
-            "delta_log_divisor": 12.0,
+            "kind_prior_default": KIND_PRIOR_DEFAULT,
+            "delta_log_divisor": DELTA_LOG_DIVISOR,
         },
         "attack": {"tactic_order": list(TACTIC_ORDER), "kind_to_attack": dict(KIND_TO_ATTACK)},
         "scoring": {"top_k_default": DEFAULT_CONFIG.scoring.top_k, "evidence_limit": EVIDENCE_LIMIT},
         "feature_stats": model.feature_stats,
         "graphs": {
             "step": {"file": "step.onnx", "inputs": step_inputs, "outputs": ["state_out", "output_out"]},
-            "head": {"file": "head.onnx", "inputs": ["outputs", "adjacency"], "outputs": ["graph_logit", "node_logits"]},
+            "head": {"file": "head.onnx", "inputs": head_inputs, "outputs": ["graph_logit", "node_logits"]},
         },
         "opset": OPSET,
     }
@@ -190,10 +203,20 @@ class OnnxStreamScorer:
         self.manifest: dict[str, Any] = json.loads((bundle / "manifest.json").read_text())
         if self.manifest.get("format") != EXPORT_FORMAT:
             raise ValueError(f"unrecognized export bundle format: {self.manifest.get('format')!r}")
+        # The runner extracts features with THIS process's code but stamps the
+        # bundle's hash into findings — the same guarantee load_campaign_model
+        # enforces for checkpoints, so a stale bundle refuses instead of lying.
+        if self.manifest.get("feature_schema_hash") != feature_schema_hash():
+            raise SchemaMismatchError(
+                f"bundle feature schema {self.manifest.get('feature_schema_hash')} does not match "
+                f"runtime feature schema {feature_schema_hash()}; re-export with the matching engine version"
+            )
         graphs = self.manifest["graphs"]
         self._step = onnxruntime.InferenceSession(str(bundle / graphs["step"]["file"]))
         self._head = onnxruntime.InferenceSession(str(bundle / graphs["head"]["file"]))
         self._step_inputs = graphs["step"]["inputs"]
+        self._head_inputs = graphs["head"]["inputs"]
+        self._evidence_limit = int(self.manifest["scoring"]["evidence_limit"])
         self.time_mode: str = self.manifest["model"]["time_mode"]
         self.decay_half_life: float | None = self.manifest["model"]["decay_half_life"]
         self.budget = budget
@@ -256,7 +279,7 @@ class OnnxStreamScorer:
             existing.event_count += 1
             if event.id not in existing.evidence_ids:
                 existing.evidence_ids.append(event.id)
-                del existing.evidence_ids[:-EVIDENCE_LIMIT]
+                del existing.evidence_ids[:-self._evidence_limit]
             if self._drift_counts is not None:
                 edges = np.asarray(self.manifest["feature_stats"]["bin_edges"])
                 for index in range(features.shape[0]):
@@ -296,7 +319,8 @@ class OnnxStreamScorer:
             adjacency[i, j] = adjacency[j, i] = weight
         adjacency = degree_normalize(adjacency)
         outputs = np.concatenate([state.output for state in self.entities.values()], axis=0)
-        graph_logit, node_logits = self._head.run(None, {"outputs": outputs, "adjacency": adjacency})
+        head_feeds = {"outputs": outputs, "adjacency": adjacency}
+        graph_logit, node_logits = self._head.run(None, {name: head_feeds[name] for name in self._head_inputs})
         calibration = self.manifest["calibration"]
         raw_probability = float(_sigmoid(graph_logit[0]))
         probability = float(_sigmoid(graph_logit[0] / max(calibration["temperature"], 1e-3) + calibration["bias"]))

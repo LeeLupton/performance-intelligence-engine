@@ -70,9 +70,16 @@ impl StreamingScorer {
             has_delta,
         )
         .map_err(|error| format!("cannot load step graph: {error}"))?;
+        let has_adjacency = manifest
+            .graphs
+            .head
+            .inputs
+            .iter()
+            .any(|name| name == "adjacency");
         let head = HeadSession::load(
             &bundle_dir.join(&manifest.graphs.head.file),
             manifest.model.hidden_dim,
+            has_adjacency,
         )
         .map_err(|error| format!("cannot load head graph: {error}"))?;
         let drift_counts = manifest.feature_stats.as_ref().map(|stats| {
@@ -248,26 +255,36 @@ impl StreamingScorer {
             .enumerate()
             .map(|(index, id)| (id, index))
             .collect();
-        let mut adjacency = vec![0.0f32; nodes * nodes];
-        for index in 0..nodes {
-            adjacency[index * nodes + index] = 1.0;
+        let has_adjacency = self
+            .manifest
+            .graphs
+            .head
+            .inputs
+            .iter()
+            .any(|name| name == "adjacency");
+        let mut adjacency = Vec::new();
+        if has_adjacency {
+            adjacency = vec![0.0f32; nodes * nodes];
+            for index in 0..nodes {
+                adjacency[index * nodes + index] = 1.0;
+            }
+            let now = self
+                .previous_time
+                .expect("previous_time set after first ingest");
+            for ((left, right), seen) in &self.edge_last_seen {
+                let weight = match self.manifest.model.decay_half_life {
+                    Some(half_life) => {
+                        let age = (now - *seen).as_seconds_f64();
+                        0.5f64.powf(age / half_life) as f32
+                    }
+                    None => 1.0,
+                };
+                let (i, j) = (index_of[left], index_of[right]);
+                adjacency[i * nodes + j] = weight;
+                adjacency[j * nodes + i] = weight;
+            }
+            degree_normalize(&mut adjacency, nodes);
         }
-        let now = self
-            .previous_time
-            .expect("previous_time set after first ingest");
-        for ((left, right), seen) in &self.edge_last_seen {
-            let weight = match self.manifest.model.decay_half_life {
-                Some(half_life) => {
-                    let age = (now - *seen).as_seconds_f64();
-                    0.5f64.powf(age / half_life) as f32
-                }
-                None => 1.0,
-            };
-            let (i, j) = (index_of[left], index_of[right]);
-            adjacency[i * nodes + j] = weight;
-            adjacency[j * nodes + i] = weight;
-        }
-        degree_normalize(&mut adjacency, nodes);
         let mut outputs = Vec::with_capacity(nodes * self.manifest.model.hidden_dim);
         for entity in &self.order {
             outputs.extend_from_slice(&self.entities[entity].output);
@@ -296,17 +313,7 @@ impl StreamingScorer {
                 applied_suppressions.push(entity.clone());
             }
         }
-        let mut by_score: Vec<usize> = (0..nodes).collect();
-        by_score.sort_by(|a, b| {
-            ranking[*b]
-                .partial_cmp(&ranking[*a])
-                .expect("ranking scores are never NaN")
-        });
-        let ranked: Vec<usize> = by_score
-            .into_iter()
-            .take(top_k.min(nodes))
-            .filter(|index| ranking[*index].is_finite())
-            .collect();
+        let ranked = ranked_indices(&ranking, top_k);
         let related: Vec<String> = ranked
             .iter()
             .map(|index| self.order[*index].clone())
@@ -437,4 +444,62 @@ fn isoformat(timestamp: DateTime<Utc>) -> String {
         chrono::SecondsFormat::Micros
     };
     timestamp.to_rfc3339_opts(precision, false)
+}
+
+/// Descending stable ranking over node probabilities: slice the top_k prefix,
+/// then drop suppressed (-inf) entries — the exact order of operations
+/// score_events/StreamingScorer use. Stability is the ADR-31 contract: exact
+/// ties (structurally identical entities) rank in first-seen order.
+pub(crate) fn ranked_indices(scores: &[f64], top_k: usize) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..scores.len()).collect();
+    order.sort_by(|a, b| {
+        scores[*b]
+            .partial_cmp(&scores[*a])
+            .expect("ranking scores are never NaN")
+    });
+    order
+        .into_iter()
+        .take(top_k.min(scores.len()))
+        .filter(|index| scores[*index].is_finite())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{histogram_bin, ranked_indices, round6};
+
+    #[test]
+    fn exact_ties_rank_in_first_seen_order() {
+        // ADR-31: stable sort keeps equal scores in index (first-seen) order.
+        assert_eq!(
+            ranked_indices(&[0.5, 0.9, 0.5, 0.5, 0.7], 5),
+            vec![1, 4, 0, 2, 3]
+        );
+    }
+
+    #[test]
+    fn suppressed_entries_are_sliced_then_filtered() {
+        // -inf sorts last, enters the top_k slice only when finite entries run
+        // out, and is filtered after slicing — matching np.argsort[:k] + isfinite.
+        let scores = [f64::NEG_INFINITY, 0.4, 0.6];
+        assert_eq!(ranked_indices(&scores, 3), vec![2, 1]);
+        assert_eq!(ranked_indices(&scores, 1), vec![2]);
+    }
+
+    #[test]
+    fn histogram_bins_match_numpy_edges() {
+        let edges = [0.0, 0.5, 1.0];
+        assert_eq!(histogram_bin(0.0, &edges), Some(0));
+        assert_eq!(histogram_bin(0.5, &edges), Some(1)); // interior edge -> higher bin
+        assert_eq!(histogram_bin(1.0, &edges), Some(1)); // last bin closed
+        assert_eq!(histogram_bin(1.1, &edges), None);
+        assert_eq!(histogram_bin(-0.1, &edges), None);
+    }
+
+    #[test]
+    fn round6_is_ties_to_even() {
+        assert_eq!(round6(0.1234565), 0.123456); // ties to even, like Python round()
+        assert_eq!(round6(0.1234575), 0.123458);
+        assert_eq!(round6(0.9999999), 1.0);
+    }
 }

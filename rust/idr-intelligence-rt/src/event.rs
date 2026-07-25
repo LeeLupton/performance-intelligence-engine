@@ -1,7 +1,9 @@
 //! The `idr_common::IdrEvent` wire envelope, validated the way `schema.py` does.
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Timelike, Utc};
 use serde_json::{Map, Value};
+
+use crate::features::truthy;
 
 /// One validated event in the canonical shape serialized by `idr_common::IdrEvent`.
 ///
@@ -34,9 +36,13 @@ impl RawEvent {
             .as_object()
             .filter(|kind| kind.contains_key("type"))
             .ok_or("kind must be a tagged object containing 'type'")?;
+        // schema.py does `raw.get("metadata") or {}` before the type check, so
+        // any falsy value ([], "", 0, false) silently becomes empty metadata;
+        // only truthy non-objects are rejected.
         let metadata = match object.get("metadata") {
             None | Some(Value::Null) => Map::new(),
             Some(Value::Object(metadata)) => metadata.clone(),
+            Some(other) if !truthy(Some(other)) => Map::new(),
             Some(_) => return Err("metadata must be an object or null".to_string()),
         };
         Ok(Self {
@@ -74,12 +80,39 @@ fn parse_timestamp(value: &Value) -> Result<DateTime<Utc>, String> {
         .as_str()
         .ok_or("timestamp must be an ISO-8601 string")?;
     if let Ok(parsed) = DateTime::parse_from_rfc3339(text) {
-        return Ok(parsed.with_timezone(&Utc));
+        return Ok(truncate_to_micros(parsed.with_timezone(&Utc)));
     }
-    // Naive timestamps are assumed UTC, matching schema.py.
-    NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S%.f")
-        .map(|naive| naive.and_utc())
+    // Naive timestamps are assumed UTC, matching schema.py. Python's
+    // fromisoformat also accepts space separators, minute precision, and bare
+    // dates; the exotic remainder (basic format, comma fractions) is not
+    // ported and fails loudly here.
+    for format in [
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M",
+    ] {
+        if let Ok(naive) = NaiveDateTime::parse_from_str(text, format) {
+            return Ok(truncate_to_micros(naive.and_utc()));
+        }
+    }
+    NaiveDate::parse_from_str(text, "%Y-%m-%d")
+        .map(|date| {
+            date.and_hms_opt(0, 0, 0)
+                .expect("midnight is valid")
+                .and_utc()
+        })
         .map_err(|error| format!("unparseable timestamp {text:?}: {error}"))
+}
+
+/// Python datetime carries microseconds; chrono carries nanoseconds. idr-main
+/// serializes `Utc::now()` at nanosecond precision, so without truncation the
+/// two engines would disagree on ordering, gaps, and first-event identity.
+fn truncate_to_micros(timestamp: DateTime<Utc>) -> DateTime<Utc> {
+    let nanos = timestamp.timestamp_subsec_nanos();
+    timestamp
+        .with_nanosecond((nanos / 1000) * 1000)
+        .expect("truncated nanoseconds are in range")
 }
 
 /// Parse newline-delimited IdrEvent JSON, naming the offending line on failure.

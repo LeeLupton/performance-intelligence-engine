@@ -36,6 +36,13 @@ FEATURE_NAMES = [
 ]
 FEATURE_DIM = len(FEATURE_NAMES)
 
+# Serving-contract constants: exported into every ONNX bundle manifest, so the
+# Rust bridge scores with exactly these values. Change them here and the
+# manifest (plus the fixture-freshness gate) follows; never re-literal them.
+SEVERITY_DEFAULT = 0.15
+KIND_PRIOR_DEFAULT = 0.18
+DELTA_LOG_DIVISOR = 12.0
+
 
 @dataclass(frozen=True)
 class EventProjection:
@@ -53,9 +60,9 @@ def project_event(event: IdrEvent, delta_seconds: float = 0.0) -> EventProjectio
     edges = tuple(_derive_edges(event, entities))
     features = np.zeros(FEATURE_DIM, dtype=np.float32)
     kind = event.kind
-    features[0] = SEVERITY_WEIGHT.get(event.severity, 0.15)
-    features[1] = KIND_PRIOR.get(event.kind_type, 0.18)
-    features[2] = np.log1p(max(delta_seconds, 0.0)) / 12.0
+    features[0] = SEVERITY_WEIGHT.get(event.severity, SEVERITY_DEFAULT)
+    features[1] = KIND_PRIOR.get(event.kind_type, KIND_PRIOR_DEFAULT)
+    features[2] = np.log1p(max(delta_seconds, 0.0)) / DELTA_LOG_DIVISOR
     features[3] = float("pid" in kind or "tgid" in kind)
     features[4] = float(kind.get("is_signed") is False)
     features[5] = float(any(key.endswith("_ip") or key in ("dest_ips", "ntp_server") for key in kind))
