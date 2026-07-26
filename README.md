@@ -258,12 +258,14 @@ Docs & record
 > trained gated-attention evidence ranking across host, process, hash, IP,
 > prefix, ASN, domain, identity, and hardware entities. Shipped calibrated,
 > ATT&CK-grounded, provenanced findings with per-entity occlusion evidence; a
-> CI-gated regression benchmark over 11 adversarial scenario families with
-> rolling-origin cross-validation; an ONNX export + pure-Rust (tract) serving
-> bridge proven field-for-field against the Python scorer; a real-data
-> validation gate emitting go/no-go verdicts and model cards; and a label driver
-> that adjudicates synthetic campaigns through the platform's *real* correlator.
-> Kept a scrupulous software-vs-detector honesty line throughout — including
+> CI-gated regression benchmark over 11 scenario families spanning graded
+> difficulty, hard negatives, and evasion, with rolling-origin cross-validation;
+> an ONNX export + pure-Rust (tract) serving bridge proven field-for-field
+> against the Python scorer; a validation gate that recalibrates and selects an
+> operating threshold on a temporal holdout, emitting go/no-go verdicts and
+> model cards — binding only on attested real data; and a label driver that
+> adjudicates synthetic campaigns through the platform's *real* correlator. Kept
+> a scrupulous software-vs-detector honesty line throughout — including
 > adversarial self-review that caught a genuine calibration bug and a verified
 > finding that the temporal-physics elaborations add no measurable value on
 > synthetic data.
