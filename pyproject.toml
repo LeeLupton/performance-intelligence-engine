@@ -25,6 +25,10 @@ export = ["onnx>=1.22", "onnxruntime>=1.20"]
 [project.scripts]
 idr-intelligence = "idr_intelligence.cli:main"
 
+[tool.setuptools.package-data]
+# The committed MITRE ATT&CK reference must ship in built wheels, not just -e.
+idr_intelligence = ["data/*.json"]
+
 [tool.mypy]
 mypy_path = "src"
 packages = ["idr_intelligence"]

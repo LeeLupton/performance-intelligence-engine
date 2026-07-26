@@ -1848,3 +1848,53 @@ def test_cli_validate_exits_nonzero_on_no_go(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 2
+
+
+def test_tactic_order_is_canonical_mitre():
+    from idr_intelligence.attack import ATTACK_REFERENCE, TACTIC_ORDER
+
+    # The canonical 14 enterprise tactics, in matrix order, incl. the two
+    # pre-compromise tactics the old hand-typed order omitted.
+    assert TACTIC_ORDER == tuple(ATTACK_REFERENCE["enterprise_tactic_order"])
+    assert TACTIC_ORDER[:3] == ("reconnaissance", "resource-development", "initial-access")
+    assert TACTIC_ORDER[-1] == "impact"
+    assert len(TACTIC_ORDER) == 14
+    # Adding the front tactics is behaviour-preserving: no kind maps to them.
+    from idr_intelligence.attack import KIND_TO_ATTACK
+
+    mapped = {mapping["tactic"] for mapping in KIND_TO_ATTACK.values()}
+    assert not mapped & {"reconnaissance", "resource-development"}
+
+
+def test_kind_to_attack_is_consistent_with_mitre():
+    from idr_intelligence.attack import (
+        KIND_TO_ATTACK,
+        technique_name,
+        validate_mapping_against_reference,
+    )
+
+    assert validate_mapping_against_reference() == []
+    # Enrichment: every mapped technique resolves to its real MITRE name.
+    for mapping in KIND_TO_ATTACK.values():
+        assert technique_name(mapping["technique"]) is not None
+    assert technique_name("T1041") == "Exfiltration Over C2 Channel"
+    assert technique_name("T9999") is None
+
+
+def test_vendored_attack_reference_is_fresh_if_bundle_present():
+    """If the MITRE bundle is on disk, the committed reference must match a fresh
+    rebuild — so a MITRE release can't leave the vendored copy silently stale."""
+    import os
+    import sys
+
+    bundle = os.environ.get("IDR_ATTACK_BUNDLE", "/home/lee/Desktop/cti/enterprise-attack/enterprise-attack.json")
+    if not Path(bundle).is_file():
+        pytest.skip("MITRE ATT&CK bundle not present; skipping freshness check")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import ground_attack_reference
+
+    from idr_intelligence.attack import ATTACK_REFERENCE
+
+    rebuilt = ground_attack_reference.build_reference(bundle)
+    assert rebuilt["enterprise_tactic_order"] == ATTACK_REFERENCE["enterprise_tactic_order"]
+    assert rebuilt["techniques"] == ATTACK_REFERENCE["techniques"]

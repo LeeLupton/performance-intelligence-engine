@@ -2,7 +2,7 @@
   "format": "idr-intelligence-onnx-v1",
   "engine_version": "0.1.0",
   "model_version": "fixture-v1",
-  "created_at": "2026-07-26T06:22:36.393585+00:00",
+  "created_at": "2026-07-26T10:52:38.297917+00:00",
   "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
   "model": {
     "feature_dim": 22,
@@ -70,6 +70,8 @@
   },
   "attack": {
     "tactic_order": [
+      "reconnaissance",
+      "resource-development",
       "initial-access",
       "execution",
       "persistence",

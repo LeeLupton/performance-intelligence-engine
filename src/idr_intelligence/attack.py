@@ -8,24 +8,31 @@ choices are domain judgments recorded here, not learned artifacts.
 
 from __future__ import annotations
 
+import json
+from importlib import resources
 from typing import Any
 
 from .schema import IdrEvent
 
-TACTIC_ORDER = (
-    "initial-access",
-    "execution",
-    "persistence",
-    "privilege-escalation",
-    "defense-evasion",
-    "credential-access",
-    "discovery",
-    "lateral-movement",
-    "collection",
-    "command-and-control",
-    "exfiltration",
-    "impact",
-)
+
+def _load_attack_reference() -> dict[str, Any]:
+    """The committed MITRE ATT&CK reference (canonical tactic order + techniques).
+
+    Distilled from the MITRE ATT&CK Enterprise STIX bundle by
+    scripts/ground_attack_reference.py, so the deterministic machinery
+    idr-sentinel corroborates is authoritative rather than hand-guessed.
+    """
+    with resources.files("idr_intelligence").joinpath("data/attack_reference.json").open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+ATTACK_REFERENCE = _load_attack_reference()
+
+# Canonical enterprise kill-chain order, straight from the MITRE ATT&CK matrix
+# (includes the two pre-compromise tactics the hand-typed order omitted). The
+# relative order of every tactic the engine maps to is unchanged, so next-stage
+# predictions are identical — but the order is now provably canonical.
+TACTIC_ORDER = tuple(ATTACK_REFERENCE["enterprise_tactic_order"])
 
 KIND_TO_ATTACK = {
     "socket_lineage": {"tactic": "execution", "technique": "T1059"},
@@ -41,6 +48,34 @@ KIND_TO_ATTACK = {
     "impossible_state": {"tactic": "impact", "technique": "T1499"},
     # triage_classification is a correlator meta-event, deliberately unmapped
 }
+
+
+def technique_name(technique_id: str) -> str | None:
+    """Human-readable MITRE name for a technique id, or None if unknown."""
+    entry = ATTACK_REFERENCE["techniques"].get(technique_id)
+    return entry["name"] if entry else None
+
+
+def validate_mapping_against_reference() -> list[str]:
+    """Inconsistencies between KIND_TO_ATTACK and the MITRE reference (empty = consistent).
+
+    Each mapped kind must name a real, current technique whose real MITRE
+    tactics include the tactic the engine assigns it — so the auditable
+    next-stage field can never drift from the authoritative dataset unnoticed.
+    """
+    problems: list[str] = []
+    techniques = ATTACK_REFERENCE["techniques"]
+    tactics = set(ATTACK_REFERENCE["enterprise_tactic_order"])
+    for kind, mapping in KIND_TO_ATTACK.items():
+        tactic, technique = mapping["tactic"], mapping["technique"]
+        if tactic not in tactics:
+            problems.append(f"{kind}: tactic {tactic!r} is not a MITRE enterprise tactic")
+        real = techniques.get(technique)
+        if real is None:
+            problems.append(f"{kind}: technique {technique} is not a current MITRE technique")
+        elif tactic not in real["tactics"]:
+            problems.append(f"{kind}: {technique} assigned {tactic!r}, but MITRE tactics are {real['tactics']}")
+    return problems
 
 
 def observed_attack_stages(events: list[IdrEvent]) -> tuple[dict[str, Any], ...]:

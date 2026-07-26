@@ -125,6 +125,10 @@
       {
         "module": "src/idr_intelligence/validation.py",
         "role": "real-data go/no-go validation gate: recalibrate + select an operating threshold at a target FPR on an earlier time segment, snapshot a real drift baseline, verify metrics + realized FPR on a strictly-later untouched segment, turn configurable gates into a verdict + model card; verdict is BINDING only on operator-attested real provenance (synthetic runs are explicit wiring checks)"
+      },
+      {
+        "module": "src/idr_intelligence/attack.py",
+        "role": "deterministic kind->ATT&CK mapping + next-stage prediction, now grounded in real MITRE ATT&CK: TACTIC_ORDER derived from the canonical enterprise matrix (14 tactics), KIND_TO_ATTACK validated technique-and-tactic-consistent against the real dataset by test, technique_name() enrichment"
       }
     ],
     "interfaces": [
@@ -324,6 +328,11 @@
         "id": "ADR-31",
         "decision": "Entity ranking uses a stable sort with first-seen tie-break everywhere (np.argsort kind=stable in pipeline/streaming/export; stable sort_by in Rust). Exact probability ties are data-inherent, not fixable by seeds: structurally identical entities (same feature history, isomorphic graph position) score identically under ANY weights, and numpy's default introsort made their ranked order an unspecified artifact. A defined tie order is required for findings to be reproducible across runs, platforms, and the Rust bridge. One pre-existing test loosened to set-comparison: a ~1e-8 batch-vs-streaming float difference can legitimately break an exact tie in only one path, permuting tied neighbors",
         "where": "src/idr_intelligence/pipeline.py; tests/test_system.py test_streaming_matches_batch_scoring"
+      },
+      {
+        "id": "ADR-32",
+        "decision": "Ground the deterministic ATT&CK machinery in real MITRE data. Lee pointed at /home/lee/Desktop/cti (the MITRE ATT&CK/CAPEC STIX repo). scripts/ground_attack_reference.py distills the 45MB Enterprise STIX bundle into a compact committed src/idr_intelligence/data/attack_reference.json (canonical 14-tactic order + 691 techniques id->{name,tactics}); attack.py derives TACTIC_ORDER from it and validates KIND_TO_ATTACK against it (validate_mapping_against_reference). Every one of the 11 hand-typed mappings was already tactic-consistent with real MITRE (validated, not assumed); the only gap was the hand TACTIC_ORDER omitting the two pre-compromise tactics (reconnaissance, resource-development) \u2014 added, which is behavior-preserving for next_stage because no kind maps to them and relative order is unchanged. A freshness test rebuilds from the live bundle when present so a MITRE release cannot leave the vendored copy stale. HONEST SCOPE: this grounds the DETERMINISTIC/auditable field idr-sentinel corroborates and can make the simulator more realistic; it is NOT labeled IdrEvent campaign data, so it does not close the training/calibration wall for the learned escalation model.",
+        "where": "src/idr_intelligence/attack.py; scripts/ground_attack_reference.py; src/idr_intelligence/data/attack_reference.json"
       }
     ]
   },
@@ -430,6 +439,11 @@
         "cmd": "idr-intelligence validate --data <windows> --data-provenance soc-2026Q2 --gate max_ece=0.6 --model-card CARD.md --out-weights validated.pt",
         "when": "2026-07-26",
         "result": "end-to-end go verdict on a simulator stand-in: binding=true on real-named provenance, model card + recalibrated checkpoint written, structured validation_complete log emitted, exit 0; default ECE gate correctly yields no-go + exit 2 on the same undersized/overconfident model"
+      },
+      {
+        "cmd": "validate KIND_TO_ATTACK against MITRE ATT&CK Enterprise STIX (/home/lee/Desktop/cti)",
+        "when": "2026-07-26",
+        "result": "all 11 hand-typed mappings tactic-consistent with real MITRE; TACTIC_ORDER regrounded to the canonical 14-tactic matrix order (added reconnaissance + resource-development); 128 py tests + 6 rust green after fixture regen"
       }
     ],
     "tests": [
@@ -547,6 +561,10 @@
     {
       "path": "reports/PRODUCTION_READINESS.md",
       "role": "software-vs-detector readiness assessment; staged go-live path (deployment hardening -> real-data validation gate -> real data -> runtime -> integration -> shadow)"
+    },
+    {
+      "path": "src/idr_intelligence/data/attack_reference.json",
+      "role": "canonical enterprise tactic order + technique catalog distilled from the MITRE ATT&CK Enterprise STIX bundle (regenerable via scripts/ground_attack_reference.py)"
     }
   ],
   "compressed_state": {
@@ -555,7 +573,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-26",
-      "summary": "Built the real-data validation gate (Lee's chosen production track): idr-intelligence validate recalibrates + picks a threshold on a temporal holdout, verifies realized FPR on an untouched later segment, and emits a provenance-gated go/no-go verdict + model card. Turns 'needs real data' into a one-command gate. Software readiness advanced; detector go-live still gated on real labeled campaigns (the data wall)"
+      "summary": "Used the real MITRE ATT&CK STIX data Lee pointed at (/home/lee/Desktop/cti) to ground the engine's deterministic ATT&CK machinery: TACTIC_ORDER now derived from the canonical matrix, KIND_TO_ATTACK proven consistent with real MITRE by test, technique-name enrichment + regeneration script + freshness gate. Also landed the critical CI linker fix and Rust bridge logging. NOT the labeled campaign data the escalation model needs \u2014 the training wall stands."
     }
   }
 }
