@@ -5,16 +5,14 @@ version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
-# MACHINE-LOCAL integration crate — deliberately NOT built in CI.
-#
-# The idr-common dependency points into the idr-main working tree, which is
-# newer than the published github.com/leelupton/idr (the local tree carries
-# ExternalTriage, TriageClassification, and the BgpAnomaly family the remote
-# lacks). Adjust the path below if idr-main lives elsewhere on your machine.
+# Wire-compatibility proof: the bridge parses events serialized by the real
+# idr_common types, and the committed goldens are valid idr-main wire format.
+# idr-common is vendored in-repo (../idr-common), so this now builds in CI —
+# no machine-local idr-main checkout required.
 [workspace]
 
 [dependencies]
-idr-common = { path = "../../../../CYBER/idr-main/idr-main/crates/idr-common" }
+idr-common = { path = "../idr-common" }  # vendored; see ../idr-common/VENDOR.md
 idr-intelligence-rt = { path = "../idr-intelligence-rt" }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }

@@ -129,6 +129,10 @@
       {
         "module": "src/idr_intelligence/attack.py",
         "role": "deterministic kind->ATT&CK mapping + next-stage prediction, now grounded in real MITRE ATT&CK: TACTIC_ORDER derived from the canonical enterprise matrix (14 tactics), KIND_TO_ATTACK validated technique-and-tactic-consistent against the real dataset by test, technique_name() enrichment"
+      },
+      {
+        "module": "rust/idr-common/src/events.rs",
+        "role": "vendored idr_common::IdrEvent wire types (verbatim from idr-main/crates/idr-common) so the bridge + wire-parity crate build against the real schema in CI, not just machine-locally; GPL-2.0-only, see rust/idr-common/VENDOR.md"
       }
     ],
     "interfaces": [
@@ -370,7 +374,8 @@
       "Production-readiness assessment + operational logging: honest reports/PRODUCTION_READINESS.md separating strong software readiness from blocked detector readiness (the wall is real labeled data + a realized runtime, not code); added observability.py (opt-in JSON-lines stderr via CLI --log-level, model-load provenance, finding summaries with timing, clean operational errors on missing/corrupt checkpoints), NullHandler so library import stays silent. 118 py tests",
       "Real-data validation gate (production track chosen by Lee): idr-intelligence validate + validation.py. On a strictly time-ordered holdout it re-fits affine calibration and selects an operating threshold at --target-fpr on the earlier segment, snapshots a real-traffic drift baseline (feature_snapshot), and verifies ROC-AUC/ECE/recall + the REALIZED FPR-at-threshold on the untouched later segment; configurable --gate KEY=VALUE risk-appetite thresholds become a go/no-go verdict, a model card, and (only on go) a recalibrated checkpoint. Exits 2 on no-go so a deploy pipeline halts. Honesty is structural: provenance is operator-attested and a verdict is BINDING only when it names real data (synthetic/sim/standin/demo -> non-binding wiring check); unknown --gate keys are rejected rather than silently ignored. Reuses windows_to_batch/affine_calibration_params/feature_snapshot/_evaluate so no scoring logic is duplicated. 125 py tests (adds 7 validation + 3 observability)",
       "ATT&CK finding enrichment (cross-language): observed_attack_stages now carries the real MITRE technique_name (e.g. T1041 -> 'Exfiltration Over C2 Channel'). Centralized the stage dict in attack.stage_record() so the batch/streaming/ONNX-runner paths can't drift; enriched the export manifest's kind_to_attack; propagated technique_name through the Rust manifest, Stage, and observe() so the golden-pinned parity holds. Also fixed a latent flake in test_streaming_matches_batch_scoring (unseeded model init made it order-dependent at top-k tie boundaries) by seeding. 129 py + rust/wire suites green.",
-      "Deployment hardening: Makefile (`make gates` runs the full CI locally: pytest/ruff/mypy/benchmark/cargo fmt+clippy+test; plus venv/attack-reference/docker targets), Python engine Dockerfile (CPU torch, non-root, pinned python:3.12-slim base), minimal multi-stage Rust serving Dockerfile (rust:1.96 build -> debian-slim + binary, --locked), .dockerignore. Makefile verified end-to-end; Docker images static-verified (daemon unreachable in sandbox)."
+      "Deployment hardening: Makefile (`make gates` runs the full CI locally: pytest/ruff/mypy/benchmark/cargo fmt+clippy+test; plus venv/attack-reference/docker targets), Python engine Dockerfile (CPU torch, non-root, pinned python:3.12-slim base), minimal multi-stage Rust serving Dockerfile (rust:1.96 build -> debian-slim + binary, --locked), .dockerignore. Makefile verified end-to-end; Docker images static-verified (daemon unreachable in sandbox).",
+      "Vendored idr-common into the repo (rust/idr-common), repointed idr-common-parity off the machine-local idr-main path onto it, and added the parity wire tests to CI. Only idr-common was vendored (the integration surface), NOT the full 42GB idr-main platform (BGP daemon/eBPF/hardware/sentinel/Next.js dashboard/data blobs = out of scope + the user's own concern). Verbatim byte-identical copy (diff -rq clean); standalone Cargo.toml un-inherits the workspace fields; VENDOR.md documents provenance + the GPL-2.0-only vs GPL-3.0-or-later license tension (Lee's call). idr-common-parity's 3 wire tests now build+pass in CI against the real types."
     ],
     "active": [],
     "blocked": []
@@ -579,6 +584,10 @@
     {
       "path": "rust/idr-intelligence-rt/Dockerfile",
       "role": "minimal multi-stage Rust serving image (binary only, no Python/ORT)"
+    },
+    {
+      "path": "rust/idr-common/",
+      "role": "vendored idr_common crate (IdrEvent wire types) + VENDOR.md provenance/license note"
     }
   ],
   "compressed_state": {
@@ -587,7 +596,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-26",
-      "summary": "Continuous-improvement loop on real MITRE data: grounded TACTIC_ORDER + validated KIND_TO_ATTACK against MITRE, then enriched every finding with real technique names cross-language (Python + manifest + Rust, golden-pinned). Fixed CI linker, added Rust logging, fixed a latent equivalence-test flake. The escalation model's training-data wall still stands (this data is ATT&CK reference, not labeled campaigns)."
+      "summary": "Vendored idr-common (the idr-main integration surface) into the repo so the wire-parity crate builds in CI against the real IdrEvent types \u2014 no machine-local path. Vendored ONLY idr-common, not the 42GB platform (scope + GPL-2.0-vs-3.0 license, flagged in VENDOR.md for Lee's decision)."
     }
   }
 }
