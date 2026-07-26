@@ -35,8 +35,10 @@ codebases). GPL-2.0-or-later is compatible with the repo's
 **GPL-3.0-or-later**, so the combined-distribution conflict is resolved: a
 downstream may take the whole work under GPLv3.
 
-This is a deliberate divergence from upstream `idr-main/crates/idr-common`,
-which remains GPL-2.0-only at last sync. When re-copying source from idr-main,
-keep this crate's `license = "GPL-2.0-or-later"` in `Cargo.toml` (the `.rs`
-files carry no license headers, so they stay byte-identical). Relicensing
-idr-main upstream to match is optional and Lee's call.
+Upstream `idr-main/crates/idr-common` is also relicensed **GPL-2.0-or-later**
+(overriding the idr-main workspace's GPL-2.0-only for that one crate; the rest
+of the idr-main platform stays GPL-2.0-only). So the two crates agree on
+license. Their `Cargo.toml` files still differ in form — this vendored copy is
+standalone (its own `[workspace]`, explicit deps) while upstream inherits most
+fields from its workspace — but the `.rs` sources carry no license headers and
+stay byte-identical, so a re-sync only copies `src/*.rs`.
