@@ -101,9 +101,13 @@ explicit go-ahead).
 
 Ordered by dependency. Owners noted where the work is not this repo's.
 
-1. **[repo] Deployment-agnostic hardening** — packaging (Dockerfile + pinned
-   build), a model card per checkpoint, runtime config validation, Rust-side
-   structured logging to match Python. *No external dependency.*
+1. **[repo] Deployment-agnostic hardening — ✅ MOSTLY BUILT.** Rust-side
+   structured logging now matches Python (`--log-level`/`IDR_RT_LOG`); a
+   `Makefile` runs every CI gate locally (`make gates`); a Python engine
+   `Dockerfile` and a minimal multi-stage Rust serving `Dockerfile` package
+   both components (CPU-only, non-root, pinned bases). Model cards are produced
+   by the validation gate (step 2). *Remaining: baking a provenance card into
+   `save_checkpoint`, and CI build-caching — minor.*
 2. **[repo] Real-data validation gate — ✅ BUILT** (`idr-intelligence validate`,
    `validation.py`). Takes real `LabeledWindow` data, re-fits calibration on an
    earlier time segment, selects an operating threshold at a target FPR, snapshots

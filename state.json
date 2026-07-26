@@ -369,7 +369,8 @@
       "Review closeout hardening after a 3-agent verification pass falsified the timestamp-parity claim: the Rust timestamp parser is now a structural mirror of CPython's fromisoformat algorithm itself (separator-finder heuristics incl. the week-date digit-run parity rule, first-of-any tz scan with Z-must-be-final, sticky basic/extended time modes, one-junk-char-before-offset tolerance, min(remaining,6) fraction quotas with any-length pre-offset tails, offset components unchecked but total < 24h, hour-24 rollover on the RAW day number so 2026-03-00T24:00 parses, Python's year 1..9999 range). Acceptance parity is a pinned contract: committed timestamp_battery.json (~400 shapes, verdicts computed by the reference interpreter, replayed by cargo AND a pytest freshness gate) plus ~200k differential-fuzz shapes across three rounds with zero divergence; an IDR_RT_EXTRA_BATTERY env hook keeps large sweeps reproducible. Also fixed from that pass: stale parity.rs tolerance header and the crate README's contradictory timestamp paragraph",
       "Production-readiness assessment + operational logging: honest reports/PRODUCTION_READINESS.md separating strong software readiness from blocked detector readiness (the wall is real labeled data + a realized runtime, not code); added observability.py (opt-in JSON-lines stderr via CLI --log-level, model-load provenance, finding summaries with timing, clean operational errors on missing/corrupt checkpoints), NullHandler so library import stays silent. 118 py tests",
       "Real-data validation gate (production track chosen by Lee): idr-intelligence validate + validation.py. On a strictly time-ordered holdout it re-fits affine calibration and selects an operating threshold at --target-fpr on the earlier segment, snapshots a real-traffic drift baseline (feature_snapshot), and verifies ROC-AUC/ECE/recall + the REALIZED FPR-at-threshold on the untouched later segment; configurable --gate KEY=VALUE risk-appetite thresholds become a go/no-go verdict, a model card, and (only on go) a recalibrated checkpoint. Exits 2 on no-go so a deploy pipeline halts. Honesty is structural: provenance is operator-attested and a verdict is BINDING only when it names real data (synthetic/sim/standin/demo -> non-binding wiring check); unknown --gate keys are rejected rather than silently ignored. Reuses windows_to_batch/affine_calibration_params/feature_snapshot/_evaluate so no scoring logic is duplicated. 125 py tests (adds 7 validation + 3 observability)",
-      "ATT&CK finding enrichment (cross-language): observed_attack_stages now carries the real MITRE technique_name (e.g. T1041 -> 'Exfiltration Over C2 Channel'). Centralized the stage dict in attack.stage_record() so the batch/streaming/ONNX-runner paths can't drift; enriched the export manifest's kind_to_attack; propagated technique_name through the Rust manifest, Stage, and observe() so the golden-pinned parity holds. Also fixed a latent flake in test_streaming_matches_batch_scoring (unseeded model init made it order-dependent at top-k tie boundaries) by seeding. 129 py + rust/wire suites green."
+      "ATT&CK finding enrichment (cross-language): observed_attack_stages now carries the real MITRE technique_name (e.g. T1041 -> 'Exfiltration Over C2 Channel'). Centralized the stage dict in attack.stage_record() so the batch/streaming/ONNX-runner paths can't drift; enriched the export manifest's kind_to_attack; propagated technique_name through the Rust manifest, Stage, and observe() so the golden-pinned parity holds. Also fixed a latent flake in test_streaming_matches_batch_scoring (unseeded model init made it order-dependent at top-k tie boundaries) by seeding. 129 py + rust/wire suites green.",
+      "Deployment hardening: Makefile (`make gates` runs the full CI locally: pytest/ruff/mypy/benchmark/cargo fmt+clippy+test; plus venv/attack-reference/docker targets), Python engine Dockerfile (CPU torch, non-root, pinned python:3.12-slim base), minimal multi-stage Rust serving Dockerfile (rust:1.96 build -> debian-slim + binary, --locked), .dockerignore. Makefile verified end-to-end; Docker images static-verified (daemon unreachable in sandbox)."
     ],
     "active": [],
     "blocked": []
@@ -566,6 +567,18 @@
     {
       "path": "src/idr_intelligence/data/attack_reference.json",
       "role": "canonical enterprise tactic order + technique catalog distilled from the MITRE ATT&CK Enterprise STIX bundle (regenerable via scripts/ground_attack_reference.py)"
+    },
+    {
+      "path": "Makefile",
+      "role": "one-command reproducible gates + build (make gates / docker / attack-reference)"
+    },
+    {
+      "path": "Dockerfile",
+      "role": "Python engine image (CPU torch, non-root)"
+    },
+    {
+      "path": "rust/idr-intelligence-rt/Dockerfile",
+      "role": "minimal multi-stage Rust serving image (binary only, no Python/ORT)"
     }
   ],
   "compressed_state": {

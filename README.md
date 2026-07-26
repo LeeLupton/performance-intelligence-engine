@@ -38,10 +38,14 @@ The simulator uses event families already present in `idr-main` (`socket_lineage
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,export]'
 pytest
 idr-intelligence demo --samples 80 --epochs 3 --output reports/demo.json
 ```
+
+`make gates` runs every CI check locally (pytest, ruff, mypy, benchmark floors,
+and the Rust bridge's fmt/clippy/test). `make docker` / `make docker-rt` build
+the Python engine and the minimal Rust serving images.
 
 `demo` prints the ablation benchmark and an evidence-linked `IntelligenceFinding`. Other subcommands:
 
