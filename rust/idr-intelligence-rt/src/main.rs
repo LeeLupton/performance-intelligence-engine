@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use idr_intelligence_rt::event::read_ndjson;
+use idr_intelligence_rt::log::{Level, Logger};
 use idr_intelligence_rt::scorer::StreamingScorer;
+use serde_json::json;
 
 const USAGE: &str = "usage: idr-intelligence-rt --model-dir DIR [EVENTS|-] [--max-nodes N] [--suppress RULE]... [--top-k K]
 
@@ -15,7 +17,8 @@ finding JSON with an `evictions` audit list — the same output shape as
 
 --max-nodes defaults to 4096 (mirroring `idr-intelligence stream`) so the
 dense N x N scoring adjacency stays bounded on untrusted streams; pass
---max-nodes 0 to disable the bound.";
+--max-nodes 0 to disable the bound. --log-level (or IDR_RT_LOG) emits
+JSON-lines operational logs to stderr; the stdout finding is unchanged.";
 
 /// Default entity budget — keeps finding()'s dense adjacency bounded even
 /// when the stream is untrusted. Matches the Python stream CLI default.
@@ -27,6 +30,7 @@ struct Args {
     max_nodes: Option<usize>,
     suppress: Vec<String>,
     top_k: Option<usize>,
+    log_level: Option<String>,
 }
 
 fn parse_args(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
@@ -35,6 +39,7 @@ fn parse_args(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut max_nodes = Some(DEFAULT_MAX_NODES);
     let mut suppress = Vec::new();
     let mut top_k = None;
+    let mut log_level = None;
     let mut argv = argv.into_iter();
     while let Some(argument) = argv.next() {
         let mut value_for = |flag: &str| argv.next().ok_or(format!("{flag} requires a value"));
@@ -47,6 +52,7 @@ fn parse_args(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
                 max_nodes = if bound == 0 { None } else { Some(bound) };
             }
             "--suppress" => suppress.push(value_for("--suppress")?),
+            "--log-level" => log_level = Some(value_for("--log-level")?),
             "--top-k" => {
                 top_k = Some(
                     value_for("--top-k")?
@@ -69,11 +75,18 @@ fn parse_args(argv: impl IntoIterator<Item = String>) -> Result<Args, String> {
         max_nodes,
         suppress,
         top_k,
+        log_level,
     })
 }
 
 fn run() -> Result<(), String> {
     let args = parse_args(std::env::args().skip(1))?;
+    let logger = Logger::from_flag(args.log_level.as_deref())?;
+    let source = args
+        .events
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "stdin".to_string());
     let text = match &args.events {
         Some(path) => std::fs::read_to_string(path)
             .map_err(|error| format!("cannot read {}: {error}", path.display()))?,
@@ -82,11 +95,49 @@ fn run() -> Result<(), String> {
     };
     let mut events = read_ndjson(&text)?;
     events.sort_by(|a, b| (a.timestamp, &a.id).cmp(&(b.timestamp, &b.id)));
-    let mut scorer = StreamingScorer::open(&args.model_dir, args.max_nodes)?;
+    logger.event(
+        Level::Info,
+        "events_read",
+        json!({"events": events.len(), "source": source}),
+    );
+    let mut scorer =
+        StreamingScorer::open(&args.model_dir, args.max_nodes).inspect_err(|error| {
+            logger.event(
+                Level::Error,
+                "model_load_failed",
+                json!({"model_dir": args.model_dir.display().to_string(), "reason": error}),
+            );
+        })?;
+    logger.event(
+        Level::Info,
+        "model_loaded",
+        json!({
+            "model_dir": args.model_dir.display().to_string(),
+            "feature_schema_hash": scorer.manifest.feature_schema_hash,
+            "feature_dim": scorer.manifest.model.feature_dim,
+            "time_mode": scorer.manifest.model.time_mode,
+            "calibration": scorer.manifest.calibration.label,
+            "max_nodes": args.max_nodes,
+        }),
+    );
+    let started = std::time::Instant::now();
     for event in &events {
         scorer.ingest(event)?;
     }
     let finding = scorer.finding(args.top_k, &args.suppress)?;
+    let elapsed_ms = (started.elapsed().as_secs_f64() * 1000.0 * 1000.0).round() / 1000.0;
+    logger.event(
+        Level::Info,
+        "finding_scored",
+        json!({
+            "campaign_id": finding.campaign_id,
+            "escalation_probability": finding.escalation_probability,
+            "graph_nodes": finding.graph_nodes,
+            "events": scorer.events_seen,
+            "evictions": scorer.evictions.len(),
+            "elapsed_ms": elapsed_ms,
+        }),
+    );
     let mut payload = serde_json::to_value(&finding).map_err(|error| error.to_string())?;
     payload["evictions"] =
         serde_json::to_value(&scorer.evictions).map_err(|error| error.to_string())?;

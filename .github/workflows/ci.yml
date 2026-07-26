@@ -14,8 +14,11 @@ jobs:
     steps:
       - name: Install Arch Linux dependencies
         run: |
+          # gcc provides /usr/bin/cc: the Rust build scripts need a linker, and
+          # rustup (unlike the old `rust` package) does not pull one in.
           pacman -Syu --noconfirm \
             git \
+            gcc \
             python \
             python-pip \
             python-setuptools \
