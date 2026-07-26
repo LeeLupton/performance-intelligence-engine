@@ -1961,3 +1961,46 @@ def test_sentinel_export_transform_produces_valid_idr_events():
         "ts": {"secs_since_epoch": 1778263800, "nanos_since_epoch": 0},
     })
     assert hijack["severity"] == "HIGH" and hijack["kind"]["confidence"] == "high"
+
+
+def test_kill_chain_harness_instantiates_labeled_campaigns():
+    """The option-1 harness must produce engine-valid, correctly-labeled windows."""
+    import random
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import build_kill_chain_dataset as harness
+
+    # Minimal idr-sim-shaped template covering the attributes the harness flips.
+    template = [
+        {"id": "a", "timestamp": "2026-07-26T00:00:00Z", "source": "kernel_ebpf", "severity": "HIGH",
+         "kind": {"type": "socket_lineage", "pid": 1, "tgid": 1, "exe_sha256": "00" * 32, "dst_ip": "1.1.1.1", "is_signed": False}, "metadata": None},
+        {"id": "b", "timestamp": "2026-07-26T00:00:02Z", "source": "hardware_nvme", "severity": "CRITICAL",
+         "kind": {"type": "nvme_latency_anomaly", "device": "/dev/nvme0", "baseline_us": 100, "observed_us": 450, "deviation_pct": 350.0, "concurrent_exfil": True}, "metadata": None},
+        {"id": "c", "timestamp": "2026-07-26T00:00:04Z", "source": "network_zeek", "severity": "HIGH",
+         "kind": {"type": "ntp_time_shift", "offset_seconds": 90.0, "ntp_server": "2.2.2.2"}, "metadata": None},
+    ]
+    offsets = harness._template_offsets(template)
+    from datetime import UTC, datetime
+
+    rng = random.Random(1)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+
+    malicious = harness.instantiate_campaign(template, offsets, index=3, start=start, malicious=True, rng=rng)
+    benign = harness.instantiate_campaign(template, offsets, index=4, start=start, malicious=False, rng=rng)
+
+    # Every event validates through the engine's own schema, and converges on one host.
+    for events, expect_signed, expect_exfil in ((malicious, False, True), (benign, True, False)):
+        hosts = set()
+        for raw in events:
+            parsed = IdrEvent.from_dict(raw)
+            hosts.add(parsed.metadata["host"])
+            if "is_signed" in parsed.kind:
+                assert parsed.kind["is_signed"] is expect_signed
+            if "concurrent_exfil" in parsed.kind:
+                assert parsed.kind["concurrent_exfil"] is expect_exfil
+        assert len(hosts) == 1  # infrastructure converges on a single campaign host
+
+    # Truncation caps a campaign to its first N stages (caught mid-chain).
+    truncated = harness.instantiate_campaign(template, offsets, index=5, start=start, malicious=True, rng=rng, stages=2)
+    assert len(truncated) == 2

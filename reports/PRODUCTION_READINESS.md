@@ -90,6 +90,39 @@ single-modality set. A binding validation still needs labeled *multi-signal
 campaign* windows — from confirmed incidents (none exist yet), a red-team
 exercise that drives the full kill chain, or analyst-adjudicated history.
 
+### The labeled multi-signal pipeline (option 1 — built)
+
+`scripts/build_kill_chain_dataset.py` assembles a labeled multi-modal
+`LabeledWindow` dataset from the detection platform's **own** artifacts, not
+the ML engine's simulator:
+
+- **positives** are distinct campaigns instantiated from idr-main's `idr-sim
+  full_kill_chain` template — the platform's authoritative kill-chain (kernel
+  eBPF + network + hardware), varied per window and optionally truncated
+  (caught mid-chain);
+- **negatives** mix benign-attribute variants of the same modalities (hard
+  negatives) with **real** idr-sentinel BGP clusters (easy, genuinely-real).
+
+Running it end-to-end (build → `demo --data` train → `validate`) works: a
+80-window / 40-40 dataset, 11 modalities, ~490 real BGP events, produces a
+**go** verdict — correctly marked **non-binding**, because the positive class
+is instantiated from a simulated template (no confirmed real campaigns exist).
+
+The metrics come back trivially perfect (ROC-AUC 1.0) even with truncation,
+and that is an **honest negative result worth recording**: idr-sim encodes
+attack-vs-benign in categorical per-event flags (`is_signed`,
+`concurrent_exfil`) plus host convergence, so the classes are separable by
+construction. This validates the **pipeline** — generate, label, train,
+threshold, model-card, verdict, all on real-negative multi-modal data — not
+detection *difficulty*. The engine's genuine hard-case discrimination is
+measured elsewhere, on its own graded/evasion benchmark (`reports/AUDIT.md`),
+where it is not 1.0.
+
+The lasting value is the harness: it is the binding-ready pipeline. The moment
+real labeled positives exist — a red-team run driven through the live sentinel,
+or a confirmed incident that makes `production_alerts.json` non-empty — the
+same three commands produce a **binding** go/no-go with a real model card.
+
 ## Detector readiness — the wall
 
 This is the load-bearing section. Every accuracy number in this repo comes
