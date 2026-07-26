@@ -61,6 +61,35 @@ These are verified in-repo, not aspirational:
    use, training data, metrics, known failure modes, non-goals) should ship
    with each checkpoint.
 
+## Real telemetry on the idr-main host (measured 2026-07-26)
+
+The engine now provably ingests and scores **real idr-main output**:
+`scripts/export_sentinel_events.py` normalizes the live sentinel audit log
+(`/var/lib/idr-sentinel/state/anomalies.jsonl`) into `IdrEvent` NDJSON, and
+`idr-intelligence score` produced a real finding on a real MOAS/origin-flap
+event (prefix `197.214.36.0/22`, real origin ASNs) — correctly mapped to
+Adversary-in-the-Middle (T1557). **The plumbing works on real data.**
+
+But that same run is why the detector wall stands, now with evidence rather
+than assertion. The real telemetry this platform currently produces is:
+
+- **All-negative.** `production_alerts.json` is `[]` — the deterministic
+  correlator has **never confirmed a campaign**. Every record is an `Observed*`
+  calibration variant, which by idr-common's own definition "emit but do NOT
+  advance the kill-chain." There are zero positive labels.
+- **Single-modality.** It is BGP anomalies only — no socket/beacon/NTP/NVMe,
+  no cross-host kill chains. The engine's entire premise (weak signals across
+  modalities converging into a campaign) cannot be exercised by it.
+- **Out-of-distribution.** Scoring it, the engine flagged 19/22 features as
+  drifted — it is honestly reporting that this real data looks nothing like its
+  synthetic training set.
+
+So real events are exportable and scoreable today, but they **cannot validate
+the detector**: the `validate` gate would correctly refuse a single-class,
+single-modality set. A binding validation still needs labeled *multi-signal
+campaign* windows — from confirmed incidents (none exist yet), a red-team
+exercise that drives the full kill chain, or analyst-adjudicated history.
+
 ## Detector readiness — the wall
 
 This is the load-bearing section. Every accuracy number in this repo comes

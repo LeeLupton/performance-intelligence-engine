@@ -1922,3 +1922,42 @@ def test_findings_carry_real_technique_names():
     for event in sorted(events, key=lambda e: (e.timestamp, e.id)):
         scorer.ingest(event)
     assert scorer.finding().observed_attack_stages == stages
+
+
+def test_sentinel_export_transform_produces_valid_idr_events():
+    """The live-sentinel adapter must emit envelopes the engine accepts."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import export_sentinel_events as exporter
+
+    # A real-shaped sentinel audit record (externally-tagged BgpAnomalyKind + SystemTime).
+    record = {
+        "kind": {"observed_moas": {"observed_origins": [327708, 36873]}},
+        "prefix": "197.214.36.0/22",
+        "observed_origin_asn": 36873,
+        "ts": {"secs_since_epoch": 1778263800, "nanos_since_epoch": 106915678},
+    }
+    event = exporter.to_idr_event(record)
+    # Round-trips through the engine's own strict validation.
+    parsed = IdrEvent.from_dict(event)
+    assert parsed.kind_type == "bgp_anomaly"
+    assert parsed.source == "sentinel_correlation"
+    # Internal-tag reshape the engine expects, and the calibration disposition.
+    assert parsed.kind["kind"]["kind"] == "observed_moas"
+    assert parsed.kind["confidence"] == "low"
+    # Entity extraction finds the real prefix + origin ASN.
+    from idr_intelligence.features import extract_entities
+
+    entities = extract_entities(parsed)
+    assert "prefix:197.214.36.0/22" in entities
+    assert "asn:36873" in entities
+    # Deterministic id: same record -> same id.
+    assert exporter.to_idr_event(record)["id"] == event["id"]
+    # A production subprefix hijack maps to HIGH / high-confidence, not calibration.
+    hijack = exporter.to_idr_event({
+        "kind": {"subprefix_hijack_local_infra": {"covered_local_prefix": "203.0.113.0/24", "hijacker_asn": 64580}},
+        "prefix": "203.0.113.0/25", "observed_origin_asn": 64580,
+        "ts": {"secs_since_epoch": 1778263800, "nanos_since_epoch": 0},
+    })
+    assert hijack["severity"] == "HIGH" and hijack["kind"]["confidence"] == "high"

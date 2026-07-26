@@ -100,6 +100,7 @@ src/idr_intelligence/models.py      S6, GNN, gated-attention pooling, checkpoint
 src/idr_intelligence/attack.py      deterministic kind→ATT&CK mapping + next-stage, grounded in real MITRE ATT&CK
 src/idr_intelligence/data/attack_reference.json  canonical tactic order + technique catalog distilled from MITRE ATT&CK STIX
 scripts/ground_attack_reference.py  regenerate the ATT&CK reference from a MITRE Enterprise STIX bundle
+scripts/export_sentinel_events.py   live idr-sentinel anomaly audit log -> IdrEvent NDJSON (real-data bridge)
 src/idr_intelligence/simulator.py   11 scenario families with stage-level ground truth
 src/idr_intelligence/training.py    ablation, calibration, scenario gen, rolling-origin CV
 src/idr_intelligence/benchmark.py   frozen-manifest regression floors (CI gate)
