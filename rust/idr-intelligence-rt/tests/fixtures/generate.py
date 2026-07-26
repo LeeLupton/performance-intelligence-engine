@@ -117,6 +117,56 @@ def assert_ranked_gaps(model, scorer, label, suppressions=()):
     assert gaps.min() >= RANKING_GAP_FLOOR, f"{label}: ranked probabilities too close ({gaps.min():.2e}); reseed"
 
 
+def timestamp_battery():
+    """Exhaustive timestamp-acceptance contract, decided by the reference
+    interpreter: for every shape, record the UTC instant schema.py produces or
+    null for rejection. The Rust parser must agree on every entry — both the
+    accept/reject verdict and the instant — so acceptance parity is a pinned
+    fixture, not a claim."""
+    from idr_intelligence.schema import _parse_timestamp
+
+    dates = ["2026-03-01", "20260301", "2026-W09-7", "2026W097", "2026-W09", "2026W09",
+             "2026-03", "2026", "2026-3-01", "2026-03-1", "2026-13-01", "2026-02-30"]
+    seps = ["T", "t", " ", "_", "x", "+"]
+    times = ["11", "1109", "11:09", "110930", "11:09:30", "11:09:30.5", "11:09:30,5",
+             "11:09:30.123456789", "110930.5", "24:00", "24:00:00", "24:00:01",
+             "11:60:00", "11:09:60", "9:09:30"]
+    offsets = ["", "Z", "z", "+00", "+0000", "+00:00", "+09", "+0930", "+09:30", "-05",
+               "+09:30:15", "+09:30:15.123456", "+093015", "+5", "+24:00"]
+    shapes = list(dates)
+    shapes += [f"2026-03-01T{time}{offset}" for time in times for offset in offsets]
+    shapes += [f"{date}T11:09:30{offset}" for date in dates for offset in ("", "Z", "+09:30")]
+    shapes += [f"2026-03-01{sep}{time}{offset}" for sep in seps for time in ("11:09", "11:09:30") for offset in ("", "Z")]
+    shapes += [f"20260301T{time}{offset}" for time in times for offset in ("", "Z", "+0000", "+09")]
+    shapes += ["", "notatime", "2026-03-01T", "2026-03-01T00:09:30X", "2026-03-01TT00:09",
+               "99999999", "2026-03-01 T 00:09", "2026-03-01T00:09:30.",
+               # fraction placement, mixed basic/extended, week+time, Python range limits
+               "2026-03-01T11.5", "2026-03-01T11:09.5", "2026-03-01T11:0930", "2026-03-01T1109:30",
+               "2026-W09T11:09", "2026W097T11:09Z", "2026-03-01T11:09:30.+00",
+               "2026-03-01T11:09:30+09:30.5", "2026-03-01T0009", "20260301T11:09",
+               "0001-01-01T00:00+23:59", "9999-12-31T23:59+00", "9999-12-31T00:00-23:59",
+               "2026-03-01T11 ", "2026-W60-1", "2026-W09-8", "2026-W09-77T00",
+               # discovered mechanism edges: junk separators, digit-run week
+               # heuristics, quota fractions, tz-scan asymmetries, day-0 rollover
+               "2026-03-01T11W+00", "2026-03-01T11:09:30XZ", "2026-03-01T11109+09:30",
+               "2026-03-01T119+00", "2026-03-01T1109401+00", "2026-03-01T1109012345",
+               "2026-03-01T11:09:30.123456:+09", "2026-03-01T11:09:30.5W+00",
+               "2026-03-01T11:09:30,2.-0530", "2026-03-01T11:09:30.123456z89+09",
+               "2026W09711:09", "2026W097311:09", "2026W09791109305Z", "2026-W09-1109",
+               "2026-W09911Z+09", "2026-03-01T11Z-05", "2026-03-01T11W-05",
+               "20260300T24:00:00", "2026-01-31T24:00:00", "20260232T24:00:00",
+               "2026-03-01T1109305Z", "2026-03-01T11:0930", "2026-03-01T1109:30"]
+    entries = []
+    for shape in dict.fromkeys(shapes):
+        try:
+            parsed = _parse_timestamp(shape)
+            utc = parsed.isoformat()
+        except (ValueError, OverflowError):
+            utc = None
+        entries.append({"shape": shape, "utc": utc})
+    return entries
+
+
 def drift_baseline():
     """Histogram real projected feature rows as the training snapshot, so the
     PSI goldens are non-degenerate and the flag threshold is exercised."""
@@ -327,6 +377,7 @@ def main() -> None:
             "features": projection.features.tolist(),
         })
     (FIXTURES / "feature_vectors.json").write_text(json.dumps(vectors, indent=2) + "\n")
+    (FIXTURES / "timestamp_battery.json").write_text(json.dumps(timestamp_battery(), indent=2) + "\n")
 
     # Budget + suppression golden: bounded entity memory with an audited
     # eviction trail, and an ip: prefix suppressed out of the ranking.

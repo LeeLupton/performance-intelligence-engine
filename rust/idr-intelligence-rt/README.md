@@ -55,10 +55,15 @@ Pass `--max-nodes 0` to disable the bound for trusted forensic replays. The
 library API (`StreamingScorer::open(dir, None)`) remains unbounded, mirroring
 the Python engine.
 
-Timestamps accept RFC 3339 (nanoseconds truncated to microseconds, matching
-Python's datetime precision), naive / space-separated / minute-precision ISO
-shapes, and bare dates; exotic ISO-8601 variants (basic format, comma
-fractions) are rejected up front.
+Timestamp parsing is a structural mirror of CPython's
+`datetime.fromisoformat` grammar (followed by schema.py's UTC normalization,
+with nanoseconds truncated to microseconds): calendar / week / basic dates,
+every time precision, comma fractions, hour-24 rollover, and the reference
+parser's quirks are reproduced mechanism-for-mechanism. Acceptance parity is
+pinned by `tests/fixtures/timestamp_battery.json` — hundreds of committed
+shapes whose verdicts come from the reference interpreter itself, replayed on
+both sides in CI — and was differential-fuzzed against ~200k generated shapes
+with zero divergence.
 
 Findings are advisory: the evidence boundary in `docs/ARCHITECTURE.md` applies
 unchanged — output feeds the deterministic IDR correlator for corroboration

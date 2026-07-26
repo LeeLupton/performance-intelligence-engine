@@ -1623,3 +1623,20 @@ def test_rust_feature_vectors_are_fresh():
         assert list(projection.entities) == entry["entities"], event.id
         assert [list(edge) for edge in projection.edges] == entry["edges"], event.id
         assert projection.features.tolist() == entry["features"], event.id
+
+
+def test_timestamp_battery_is_fresh():
+    """The committed timestamp battery is the cross-language acceptance
+    contract, with verdicts owned by THIS interpreter's fromisoformat. If a
+    Python upgrade changes acceptance, this fails and the battery (and the
+    Rust mirror) must be regenerated together."""
+    from idr_intelligence.schema import _parse_timestamp
+
+    entries = json.loads((RUST_FIXTURES / "timestamp_battery.json").read_text())
+    assert len(entries) > 300
+    for entry in entries:
+        try:
+            utc = _parse_timestamp(entry["shape"]).isoformat()
+        except (ValueError, OverflowError):
+            utc = None
+        assert utc == entry["utc"], entry["shape"]

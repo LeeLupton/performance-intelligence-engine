@@ -1,6 +1,6 @@
 //! Golden-stream parity: the Rust bridge must reproduce the torch
 //! `StreamingScorer` finding on the committed fixtures — every discrete field
-//! exactly, probabilities and drift within 1e-4.
+//! exactly, probabilities and drift within PROBABILITY_TOLERANCE.
 
 use std::path::{Path, PathBuf};
 
