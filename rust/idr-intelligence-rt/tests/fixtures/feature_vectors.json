@@ -3378,5 +3378,158 @@
       0.0,
       0.0
     ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-00000000000a",
+      "timestamp": "2026-03-01T00:09:30,5",
+      "source": "network_zeek",
+      "severity": "WARNING",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "ntp_time_shift",
+        "offset_seconds": 90.0,
+        "ntp_server": "192.0.2.9"
+      }
+    },
+    "delta_seconds": 90.5,
+    "entities": [
+      "host:edge-host",
+      "ip:192.0.2.9"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "ip:192.0.2.9",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.25,
+      0.41999998688697815,
+      0.37636157870292664,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-00000000000b",
+      "timestamp": "20260301T001000",
+      "source": "kernel_ebpf",
+      "severity": "IMPOSSIBLE",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "impossible_state",
+        "correlated_event_ids": [],
+        "description": "x",
+        "kill_chain_stage": "y"
+      }
+    },
+    "delta_seconds": 29.5,
+    "entities": [
+      "host:edge-host"
+    ],
+    "edges": [],
+    "features": [
+      1.0,
+      1.0,
+      0.28481054306030273,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-00000000000c",
+      "timestamp": "2026-03-01T11",
+      "source": "hardware_nvme",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "nvme_latency_anomaly",
+        "device": "nvme0n1",
+        "baseline_us": 120,
+        "observed_us": 500,
+        "deviation_pct": 316.0,
+        "concurrent_exfil": false
+      }
+    },
+    "delta_seconds": 39000.0,
+    "entities": [
+      "host:edge-host",
+      "device:edge-host:nvme0n1"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "device:edge-host:nvme0n1",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.5199999809265137,
+      0.8809452056884766,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
   }
 ]

@@ -42,7 +42,7 @@ def main() -> None:
     stream = subparsers.add_parser("stream", help="score newline-delimited IdrEvent JSON one event at a time over carried S6 state")
     stream.add_argument("events")
     stream.add_argument("--weights", default="artifacts/hybrid_model.pt")
-    stream.add_argument("--max-nodes", type=int, default=None, help="entity budget; least-recently-seen entities are evicted with an audit trail")
+    stream.add_argument("--max-nodes", type=int, default=4096, help="entity budget; least-recently-seen entities are evicted with an audit trail. 0 disables the bound. The default keeps the dense N x N scoring adjacency bounded on untrusted streams (mirrored by the Rust bridge CLI)")
     stream.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
     stream.add_argument("--registry", default=None, help="campaign registry JSON path; matched and updated so campaign ids stay stable across windows")
 

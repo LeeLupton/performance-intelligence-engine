@@ -342,7 +342,8 @@
       "W16: campaign-identity registry (campaigns.py; weighted durable-entity fingerprint matching, content-addressed IDs, opt-in via score_events(registry=)/CLI --registry; finding v7 adds continues_campaign + windows_observed)",
       "W15: streaming scorer (streaming.py: StreamingScorer over W13 step() + bounded_graph, CLI stream subcommand; equivalence to batch pinned across time modes/decay/drift)",
       "W17: ONNX export + Rust serving bridge (export.py + CLI export; rust/idr-intelligence-rt on tract, golden-pinned to StreamingScorer; rust/idr-common-parity wire proof against the real idr_common from the idr-main tree; CI extended with cargo fmt/clippy/test). ROADMAP COMPLETE - all 17 workstreams shipped",
-      "W17 adversarial review (65-agent workflow: 5 lenses -> 30 raw findings -> 2 refuters each -> 19 confirmed) and fix slice: use_gnn=False export now declares/feeds the head's real input signature (nognn golden bundle added); OnnxStreamScorer verifies feature_schema_hash and reads evidence_limit from the manifest; manifest constants are imported from features.py (SEVERITY_DEFAULT/KIND_PRIOR_DEFAULT/DELTA_LOG_DIVISOR), test-tied; _masked_max avoids the IsInf op (uniform-pooling bundles tract-loadable, test-pinned); CampaignModel rejects non-positive decay_half_life; Rust truncates wire timestamps to microseconds (idr-main emits nanoseconds), accepts Python's falsy-metadata and common naive-ISO shapes, validates manifests (feature-name length, decay, stats shape) instead of panicking, and feeds the head per the manifest's input list; fixtures regenerated with content-addressed ids (campaign_id now discriminates), a real drift baseline (some-but-not-all features flag), budget-case gap checks, salt-searched tie-free rankings, and 9 hand-authored edge-case events covering every extraction branch; parity.rs adds field-set equality + manifest-rejection tests; ranked_indices extracted with tie unit tests both sides; freshness gates in test_system.py replay all committed goldens + feature vectors against the current engine so staleness fails CI. Deferred with documentation: per-event entity caps (parity with Python; trust boundary documented in the crate README), exotic ISO-8601 shapes, rolling Arch rust toolchain in CI (same class as the ruff pin \u2014 revisit on first breakage)"
+      "W17 adversarial review (65-agent workflow: 5 lenses -> 30 raw findings -> 2 refuters each -> 19 confirmed) and fix slice: use_gnn=False export now declares/feeds the head's real input signature (nognn golden bundle added); OnnxStreamScorer verifies feature_schema_hash and reads evidence_limit from the manifest; manifest constants are imported from features.py (SEVERITY_DEFAULT/KIND_PRIOR_DEFAULT/DELTA_LOG_DIVISOR), test-tied; _masked_max avoids the IsInf op (uniform-pooling bundles tract-loadable, test-pinned); CampaignModel rejects non-positive decay_half_life; Rust truncates wire timestamps to microseconds (idr-main emits nanoseconds), accepts Python's falsy-metadata and common naive-ISO shapes, validates manifests (feature-name length, decay, stats shape) instead of panicking, and feeds the head per the manifest's input list; fixtures regenerated with content-addressed ids (campaign_id now discriminates), a real drift baseline (some-but-not-all features flag), budget-case gap checks, salt-searched tie-free rankings, and 9 hand-authored edge-case events covering every extraction branch; parity.rs adds field-set equality + manifest-rejection tests; ranked_indices extracted with tie unit tests both sides; freshness gates in test_system.py replay all committed goldens + feature vectors against the current engine so staleness fails CI. Deferred with documentation: per-event entity caps (parity with Python; trust boundary documented in the crate README), exotic ISO-8601 shapes, rolling Arch rust toolchain in CI (same class as the ruff pin \u2014 revisit on first breakage)",
+      "Review closeout \u2014 the four partially-addressed/deferred confirmed findings are now fixed for real: (#17) both stream CLIs default to --max-nodes 4096 with 0=unbounded (engine APIs unchanged; symmetric Python/Rust; dense N x N adjacency bounded on untrusted streams); (#15) rust-toolchain.toml pins 1.96.1 at the repo root and CI installs rustup instead of Arch's rolling rust package (all cargo gates re-verified under 1.96.1); (#7) the Rust timestamp parser now accepts every shape Python's fromisoformat does (comma fractions, basic separator-free forms, hour-only precision, colon-less offsets), pinned by a 12-shape unit table and three new exotic-timestamp fixture events; (#14) Rust golden tolerance tightened 1e-4 -> 2e-6 (goldens are 6-decimal rounded so runtime drift is quantized; measured ORT-vs-golden diff 0.0, tract passes at 2e-6; pytest freshness stays 1e-4 because CI's ORT version floats). Rejected findings stay rejected (each refuted by two verifiers with reproduction); the cross-language tie-order golden remains closed at the unit level because a tie in one runtime is a near-tie in another"
     ],
     "active": [],
     "blocked": []
@@ -398,6 +399,11 @@
         "cmd": "python -m pytest -q && ruff && python -m mypy src && benchmark && cargo fmt/clippy/test (both crates)",
         "when": "2026-07-25",
         "result": "114 python tests, 12 rust bridge tests, 3 idr-common wire tests, benchmark floors green after review fixes"
+      },
+      {
+        "cmd": "full gate sweep under pinned rustc 1.96.1 (pytest/ruff/mypy/benchmark/cargo fmt+clippy+test/idr-common-parity)",
+        "when": "2026-07-26",
+        "result": "114 python + 14 rust + 3 wire tests green; goldens regenerated with 3 exotic-timestamp edge events; tract matches goldens at 2e-6"
       }
     ],
     "tests": [
@@ -518,8 +524,8 @@
     "source_digest": "git:2c26ef2-plus-w17",
     "state_vector": [],
     "latest_event": {
-      "when": "2026-07-25",
-      "summary": "W17 review fixes shipped after a 65-agent adversarial workflow confirmed 19 findings (serving crash on use_gnn=False exports, ns-vs-us wire timestamps, missing schema-hash gate, fixture degeneracies); all fixed or documented, fixtures regenerated, freshness gates added. ROADMAP COMPLETE: 17/17"
+      "when": "2026-07-26",
+      "summary": "All 19 confirmed review findings now fully fixed (default node bound in both CLIs, pinned rust toolchain, complete fromisoformat shape parity, tightened golden tolerances). ROADMAP COMPLETE 17/17; branch pushed, PR open/pending"
     }
   }
 }

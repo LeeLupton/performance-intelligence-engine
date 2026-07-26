@@ -46,12 +46,14 @@ side against the real `idr_common` types from the idr-main tree.
 
 ## Input trust
 
-The bridge consumes the IDR pipeline's own event stream. Like the Python
-engine it mirrors, it places no cap on entities per event — a single event
-with a huge `dest_ips` array creates that many entities, and `finding()`
-builds a dense N×N adjacency — so scoring arbitrary untrusted NDJSON from
-outside the pipeline is out of scope. Use `--max-nodes` to bound memory
-across events on long streams.
+The bridge consumes the IDR pipeline's own event stream, but the CLI is
+bounded by default anyway: `--max-nodes` defaults to 4096 (matching
+`idr-intelligence stream`), so the dense N×N scoring adjacency and carried
+entity memory stay bounded even on adversarial input — a single event with a
+huge `dest_ips` array gets its excess entities evicted with an audit trail.
+Pass `--max-nodes 0` to disable the bound for trusted forensic replays. The
+library API (`StreamingScorer::open(dir, None)`) remains unbounded, mirroring
+the Python engine.
 
 Timestamps accept RFC 3339 (nanoseconds truncated to microseconds, matching
 Python's datetime precision), naive / space-separated / minute-precision ISO

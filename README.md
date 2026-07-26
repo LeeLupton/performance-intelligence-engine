@@ -49,7 +49,7 @@ idr-intelligence demo --samples 80 --epochs 3 --output reports/demo.json
 idr-intelligence score events.ndjson --weights artifacts/hybrid_model.pt   # score an NDJSON export (each line a serialized IdrEvent)
 idr-intelligence score events.ndjson --suppress 'ip:' --suppress host:known-scanner  # analyst allowlist
 idr-intelligence score events.ndjson --registry campaigns.json               # stable campaign ids across windows (registry updated in place)
-idr-intelligence stream events.ndjson --max-nodes 64                         # event-at-a-time scoring over carried S6 state, bounded memory
+idr-intelligence stream events.ndjson --max-nodes 64                         # event-at-a-time scoring over carried S6 state (default bound 4096; 0 = unbounded)
 idr-intelligence export --weights artifacts/hybrid_model.pt --out artifacts/export  # ONNX bundle for the Rust bridge
 
 idr-intelligence benchmark --manifest benchmarks/v1.json                    # frozen regression floors; exit 1 on violation (runs in CI)

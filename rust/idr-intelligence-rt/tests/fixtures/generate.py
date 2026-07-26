@@ -178,6 +178,16 @@ EDGE_CASE_EVENTS = [
      "severity": "HIGH", "metadata": {"host": "edge-host"},
      "kind": {"type": "hsts_time_manipulation", "domain": "Update-CDN.Example.", "cert_expiry": "2025-12-01",
               "ntp_shift_seconds": 90.0, "account": "", "user": None}},
+    {"id": "e1000000-0000-4000-8000-00000000000a", "timestamp": "2026-03-01T00:09:30,5", "source": "network_zeek",
+     "severity": "WARNING", "metadata": {"host": "edge-host"},
+     "kind": {"type": "ntp_time_shift", "offset_seconds": 90.0, "ntp_server": "192.0.2.9"}},
+    {"id": "e1000000-0000-4000-8000-00000000000b", "timestamp": "20260301T001000", "source": "kernel_ebpf",
+     "severity": "IMPOSSIBLE", "metadata": {"host": "edge-host"},
+     "kind": {"type": "impossible_state", "correlated_event_ids": [], "description": "x", "kill_chain_stage": "y"}},
+    {"id": "e1000000-0000-4000-8000-00000000000c", "timestamp": "2026-03-01T11", "source": "hardware_nvme",
+     "severity": "HIGH", "metadata": {"host": "edge-host"},
+     "kind": {"type": "nvme_latency_anomaly", "device": "nvme0n1", "baseline_us": 120, "observed_us": 500,
+              "deviation_pct": 316.0, "concurrent_exfil": False}},
 ]
 
 

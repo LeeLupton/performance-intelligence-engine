@@ -60,6 +60,11 @@ const EXACT_FIELDS: &[&str] = &[
     "windows_observed",
 ];
 
+// Probability/PSI tolerance: goldens are rounded to 6 decimals, so runtime
+// drift (~1e-7 measured) is quantized to 1e-6 steps — 2e-6 tolerates exactly
+// one rounding-boundary flip and nothing more.
+const PROBABILITY_TOLERANCE: f64 = 2e-6;
+
 fn assert_finding_matches(got: &Value, want: &Value, case: &str) {
     // Field-set equality first: EXACT_FIELDS is a closed list, and indexing a
     // key absent from both sides compares Null==Null — a field added to the
@@ -78,7 +83,7 @@ fn assert_finding_matches(got: &Value, want: &Value, case: &str) {
     for field in ["escalation_probability", "raw_escalation_probability"] {
         let (g, w) = (got[field].as_f64().unwrap(), want[field].as_f64().unwrap());
         assert!(
-            (g - w).abs() <= 1e-4,
+            (g - w).abs() <= PROBABILITY_TOLERANCE,
             "{field} diverges for {case}: {g} vs {w}"
         );
     }
@@ -92,7 +97,7 @@ fn assert_finding_matches(got: &Value, want: &Value, case: &str) {
             for field in ["psi_max", "psi_mean"] {
                 let (g, w) = (g[field].as_f64().unwrap(), w[field].as_f64().unwrap());
                 assert!(
-                    (g - w).abs() <= 1e-4,
+                    (g - w).abs() <= PROBABILITY_TOLERANCE,
                     "{field} diverges for {case}: {g} vs {w}"
                 );
             }
@@ -175,7 +180,7 @@ fn nognn_bundle_matches_python_reference() {
     for field in ["escalation_probability", "raw_escalation_probability"] {
         let (g, w) = (got[field].as_f64().unwrap(), want[field].as_f64().unwrap());
         assert!(
-            (g - w).abs() <= 1e-4,
+            (g - w).abs() <= PROBABILITY_TOLERANCE,
             "{field} diverges for nognn: {g} vs {w}"
         );
     }

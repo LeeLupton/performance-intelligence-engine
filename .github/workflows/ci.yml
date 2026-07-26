@@ -26,7 +26,7 @@ jobs:
             python-pytest \
             python-ruff \
             mypy \
-            rust
+            rustup
 
       - uses: actions/checkout@v4
 
@@ -67,6 +67,11 @@ jobs:
 
       # rust/idr-common-parity is machine-local (path-dep on the idr-main
       # working tree) and deliberately not built here.
+      # The toolchain is pinned by rust-toolchain.toml (rustup auto-installs
+      # it), so clippy/rustfmt cannot drift with the Arch container.
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
       - name: Run Rust format check
         run: cargo fmt --check --manifest-path rust/idr-intelligence-rt/Cargo.toml
 
