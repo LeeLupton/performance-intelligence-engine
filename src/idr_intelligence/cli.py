@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import time
 from pathlib import Path
+from typing import Any
 
 from .benchmark import run_benchmark
 from .campaigns import CampaignRegistry
-from .models import load_campaign_model
-from .pipeline import score_events
+from .models import CampaignModel, load_campaign_model
+from .observability import LEVELS, configure_logging, get_logger, log_event
+from .pipeline import IntelligenceFinding, score_events
+from .registry import feature_schema_hash
 from .schema import IdrEvent
 from .simulator import SCENARIOS, simulate_campaign
 from .training import (
@@ -23,9 +28,17 @@ from .training import (
 def main() -> None:
     """Parse arguments and dispatch to the demo or score command."""
     parser = argparse.ArgumentParser(prog="idr-intelligence")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--log-level",
+        default="warning",
+        choices=LEVELS,
+        help="operational logging to stderr as JSON lines (default warning keeps the CLI quiet); "
+        "logs never touch stdout, so the finding JSON is unchanged",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    demo = subparsers.add_parser("demo", help="run ablations and emit a synthetic campaign finding")
+    demo = subparsers.add_parser("demo", parents=[common], help="run ablations and emit a synthetic campaign finding")
     demo.add_argument("--samples", type=int, default=80)
     demo.add_argument("--epochs", type=int, default=3)
     demo.add_argument("--malicious-rate", type=float, default=0.5)
@@ -33,28 +46,28 @@ def main() -> None:
     demo.add_argument("--data", default=None, help="directory or file of *.labeled.ndjson windows; replaces the simulator")
     demo.add_argument("--output", default="reports/demo.json")
 
-    score = subparsers.add_parser("score", help="score newline-delimited IdrEvent JSON")
+    score = subparsers.add_parser("score", parents=[common], help="score newline-delimited IdrEvent JSON")
     score.add_argument("events")
     score.add_argument("--weights", default="artifacts/hybrid_model.pt")
     score.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
     score.add_argument("--registry", default=None, help="campaign registry JSON path; matched and updated so campaign ids stay stable across windows")
 
-    stream = subparsers.add_parser("stream", help="score newline-delimited IdrEvent JSON one event at a time over carried S6 state")
+    stream = subparsers.add_parser("stream", parents=[common], help="score newline-delimited IdrEvent JSON one event at a time over carried S6 state")
     stream.add_argument("events")
     stream.add_argument("--weights", default="artifacts/hybrid_model.pt")
     stream.add_argument("--max-nodes", type=int, default=4096, help="entity budget; least-recently-seen entities are evicted with an audit trail. 0 disables the bound. The default keeps the dense N x N scoring adjacency bounded on untrusted streams (mirrored by the Rust bridge CLI)")
     stream.add_argument("--suppress", action="append", default=None, help="entity id or 'prefix:' to attenuate from ranking (repeatable)")
     stream.add_argument("--registry", default=None, help="campaign registry JSON path; matched and updated so campaign ids stay stable across windows")
 
-    export = subparsers.add_parser("export", help="export the streaming model as an ONNX bundle (step + head + manifest)")
+    export = subparsers.add_parser("export", parents=[common], help="export the streaming model as an ONNX bundle (step + head + manifest)")
     export.add_argument("--weights", default="artifacts/hybrid_model.pt")
     export.add_argument("--out", default="artifacts/export", help="output directory for step.onnx, head.onnx, manifest.json")
     export.add_argument("--model-version", default=None, help="model_version recorded in the manifest; defaults to the weights filename")
 
-    bench = subparsers.add_parser("benchmark", help="run a frozen benchmark manifest; exit 1 on floor violations")
+    bench = subparsers.add_parser("benchmark", parents=[common], help="run a frozen benchmark manifest; exit 1 on floor violations")
     bench.add_argument("--manifest", default="benchmarks/v1.json")
 
-    ablation = subparsers.add_parser("ablation", help="rolling-origin CV with seed replicates; declares best_model or tie")
+    ablation = subparsers.add_parser("ablation", parents=[common], help="rolling-origin CV with seed replicates; declares best_model or tie")
     ablation.add_argument("--samples", type=int, default=60)
     ablation.add_argument("--epochs", type=int, default=2)
     ablation.add_argument("--folds", type=int, default=3)
@@ -62,17 +75,20 @@ def main() -> None:
     ablation.add_argument("--malicious-rate", type=float, default=0.5)
     ablation.add_argument("--scenario", default="v0_easy", choices=SCENARIOS)
 
-    timeabl = subparsers.add_parser("time-ablation", help="compare global / per-entity / time-aware S6 on one scenario")
+    timeabl = subparsers.add_parser("time-ablation", parents=[common], help="compare global / per-entity / time-aware S6 on one scenario")
     timeabl.add_argument("--scenario", default="low_and_slow", choices=SCENARIOS)
     timeabl.add_argument("--samples", type=int, default=80)
     timeabl.add_argument("--epochs", type=int, default=3)
 
-    decayabl = subparsers.add_parser("decay-ablation", help="compare edge-decay half-lives (none / 1h / 15m) on one scenario")
+    decayabl = subparsers.add_parser("decay-ablation", parents=[common], help="compare edge-decay half-lives (none / 1h / 15m) on one scenario")
     decayabl.add_argument("--scenario", default="distractor", choices=SCENARIOS)
     decayabl.add_argument("--samples", type=int, default=80)
     decayabl.add_argument("--epochs", type=int, default=3)
 
     args = parser.parse_args()
+    configure_logging(args.log_level)
+    log = get_logger("cli")
+    log_event(log, "command_start", command=args.command, engine_schema=feature_schema_hash())
     if args.command == "demo":
         report = train_ablation(samples=args.samples, epochs=args.epochs, output=args.output, malicious_rate=args.malicious_rate, scenario=args.scenario, data=args.data)
         model = load_campaign_model("artifacts/hybrid_model.pt")
@@ -96,8 +112,9 @@ def main() -> None:
     elif args.command == "export":
         from .export import export_streaming_bundle
 
-        model = load_campaign_model(args.weights)
+        model = _load_model(args.weights, log)
         manifest = export_streaming_bundle(model, args.out, model_version=args.model_version or Path(args.weights).name)
+        log_event(log, "bundle_exported", out=args.out, feature_schema_hash=manifest["feature_schema_hash"], graphs=sorted(graph["file"] for graph in manifest["graphs"].values()))
         print(json.dumps({
             "out": args.out,
             "graphs": sorted(graph["file"] for graph in manifest["graphs"].values()),
@@ -109,15 +126,17 @@ def main() -> None:
         from .bounded_graph import GraphBudget
         from .streaming import StreamingScorer
 
-        model = load_campaign_model(args.weights)
+        model = _load_model(args.weights, log)
         budget = GraphBudget(max_nodes=args.max_nodes) if args.max_nodes else None
         scorer = StreamingScorer(model, budget=budget, model_version=Path(args.weights).name)
-        for event in sorted(_read_events(args.events), key=lambda item: (item.timestamp, item.id)):
+        started = time.perf_counter()
+        for event in sorted(_read_events(args.events, log), key=lambda item: (item.timestamp, item.id)):
             scorer.ingest(event)
         registry = CampaignRegistry.load(args.registry) if args.registry else None
         finding = scorer.finding(suppressions=args.suppress, registry=registry)
         if registry is not None:
             registry.save(args.registry)
+        _log_finding(log, finding, elapsed_ms=_elapsed_ms(started), events=scorer.events_seen, evictions=len(scorer.evictions))
         payload = finding.to_dict()
         payload["evictions"] = [
             {"entity": record.entity, "last_seen": record.last_seen.isoformat(), "reason": record.reason}
@@ -125,16 +144,59 @@ def main() -> None:
         ]
         print(json.dumps(payload, indent=2))
     else:
-        events = _read_events(args.events)
-        model = load_campaign_model(args.weights)
+        events = _read_events(args.events, log)
+        model = _load_model(args.weights, log)
         registry = CampaignRegistry.load(args.registry) if args.registry else None
+        started = time.perf_counter()
         finding = score_events(events, model, model_version=Path(args.weights).name, suppressions=args.suppress, registry=registry)
         if registry is not None:
             registry.save(args.registry)
+        _log_finding(log, finding, elapsed_ms=_elapsed_ms(started), events=len(events))
         print(json.dumps(finding.to_dict(), indent=2))
 
 
-def _read_events(path: str) -> list[IdrEvent]:
+def _load_model(path: str, log: Any) -> CampaignModel:
+    """Load a checkpoint, logging its provenance — or a clean operational error."""
+    try:
+        model = load_campaign_model(path)
+    except Exception as exc:
+        log_event(log, "model_load_failed", level=logging.ERROR, weights=path, reason=str(exc))
+        raise SystemExit(f"cannot load model {path}: {exc}") from exc
+    log_event(
+        log,
+        "model_loaded",
+        weights=path,
+        feature_dim=model.feature_dim,
+        time_mode=model.time_mode,
+        decay_half_life=model.decay_half_life,
+        calibration=model.calibration_label(),
+        feature_schema_hash=feature_schema_hash(),
+    )
+    return model
+
+
+def _log_finding(log: Any, finding: IntelligenceFinding, **fields: Any) -> None:
+    """Emit the operational summary of a produced finding (never the full evidence)."""
+    drift = finding.feature_drift or {}
+    log_event(
+        log,
+        "finding_scored",
+        campaign_id=finding.campaign_id,
+        escalation_probability=finding.escalation_probability,
+        calibration=finding.calibration,
+        predicted_next_stage=finding.predicted_next_stage,
+        graph_nodes=finding.graph_nodes,
+        continues_campaign=finding.continues_campaign,
+        drift_flagged=len(drift.get("flagged_features", ())),
+        **fields,
+    )
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000.0, 3)
+
+
+def _read_events(path: str, log: Any = None) -> list[IdrEvent]:
     """Parse newline-delimited IdrEvent JSON, naming the offending line on failure."""
     events = []
     for line_number, line in enumerate(Path(path).read_text().splitlines(), start=1):
@@ -143,6 +205,8 @@ def _read_events(path: str) -> list[IdrEvent]:
         try:
             events.append(IdrEvent.from_dict(json.loads(line)))
         except Exception as exc:
+            if log is not None:
+                log_event(log, "event_rejected", level=logging.ERROR, path=path, line=line_number, reason=str(exc))
             raise SystemExit(f"invalid event at line {line_number}: {exc}") from exc
     return events
 

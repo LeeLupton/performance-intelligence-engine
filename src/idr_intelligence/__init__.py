@@ -1,5 +1,7 @@
 """Temporal-graph intelligence for IDR event streams."""
 
+import logging as _logging
+
 from .campaigns import CampaignRegistry
 from .config import ENGINE_VERSION
 from .export import OnnxStreamScorer, export_streaming_bundle
@@ -17,3 +19,8 @@ __all__ = [
     "score_events",
 ]
 __version__ = ENGINE_VERSION
+
+# Silent by default: importing the library emits nothing and scoring stays
+# byte-for-byte deterministic on stdout. The CLI opts into stderr logging via
+# observability.configure_logging().
+_logging.getLogger("idr_intelligence").addHandler(_logging.NullHandler())

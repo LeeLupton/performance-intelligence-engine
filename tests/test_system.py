@@ -1640,3 +1640,62 @@ def test_timestamp_battery_is_fresh():
         except (ValueError, OverflowError):
             utc = None
         assert utc == entry["utc"], entry["shape"]
+
+
+def test_cli_log_level_emits_structured_stderr_without_touching_stdout(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    lines = []
+    for event in simulate_campaign(1, 5):
+        lines.append(json.dumps({
+            "id": event.id, "timestamp": event.timestamp.isoformat(), "source": event.source,
+            "severity": event.severity, "kind": event.kind, "metadata": event.metadata,
+        }))
+    events_path.write_text("\n".join(lines) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4), weights)
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "score", str(events_path), "--weights", str(weights), "--log-level", "info"])
+    cli.main()
+    captured = capsys.readouterr()
+    # stdout is still exactly the finding JSON — logs never contaminate it.
+    finding = json.loads(captured.out)
+    assert finding["campaign_id"].startswith("idr-campaign-")
+    # stderr carries structured JSON-lines operational events.
+    records = [json.loads(line) for line in captured.err.splitlines() if line.strip()]
+    events_by_name = {record["event"]: record for record in records}
+    assert "model_loaded" in events_by_name
+    assert events_by_name["model_loaded"]["feature_schema_hash"] == feature_schema_hash()
+    scored = events_by_name["finding_scored"]
+    assert scored["campaign_id"] == finding["campaign_id"]
+    assert scored["graph_nodes"] == finding["graph_nodes"]
+    assert "elapsed_ms" in scored
+
+
+def test_cli_default_log_level_is_quiet(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    events_path.write_text("\n".join(
+        json.dumps({
+            "id": event.id, "timestamp": event.timestamp.isoformat(), "source": event.source,
+            "severity": event.severity, "kind": event.kind, "metadata": event.metadata,
+        })
+        for event in simulate_campaign(1, 5)
+    ) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4), weights)
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "score", str(events_path), "--weights", str(weights)])
+    cli.main()
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["campaign_id"]  # stdout finding intact
+    assert captured.err == ""  # default warning level: no info logs
+
+
+def test_cli_missing_model_logs_operational_error(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    events_path.write_text(json.dumps({
+        "id": "x", "timestamp": "2026-03-01T00:00:00+00:00", "source": "kernel_ebpf",
+        "severity": "HIGH", "kind": {"type": "socket_lineage", "pid": 1},
+    }) + "\n")
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "score", str(events_path), "--weights", str(tmp_path / "nope.pt"), "--log-level", "error"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    records = [json.loads(line) for line in capsys.readouterr().err.splitlines() if line.strip()]
+    assert any(record["event"] == "model_load_failed" and record["level"] == "ERROR" for record in records)

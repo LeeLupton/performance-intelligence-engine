@@ -117,6 +117,10 @@
       {
         "module": "rust/idr-common-parity/tests/wire.rs",
         "role": "machine-local wire parity: bridge parses idr_common-serialized events, goldens deserialize into real idr_common::IdrEvent (not in CI; path-dep on idr-main tree)"
+      },
+      {
+        "module": "src/idr_intelligence/observability.py",
+        "role": "opt-in structured stderr logging (JSON lines): model provenance on load, per-run counts/timing, finding summaries, drift flags, evictions, rejections; silent by default so the stdout finding contract and determinism are untouched"
       }
     ],
     "interfaces": [
@@ -344,7 +348,8 @@
       "W17: ONNX export + Rust serving bridge (export.py + CLI export; rust/idr-intelligence-rt on tract, golden-pinned to StreamingScorer; rust/idr-common-parity wire proof against the real idr_common from the idr-main tree; CI extended with cargo fmt/clippy/test). ROADMAP COMPLETE - all 17 workstreams shipped",
       "W17 adversarial review (65-agent workflow: 5 lenses -> 30 raw findings -> 2 refuters each -> 19 confirmed) and fix slice: use_gnn=False export now declares/feeds the head's real input signature (nognn golden bundle added); OnnxStreamScorer verifies feature_schema_hash and reads evidence_limit from the manifest; manifest constants are imported from features.py (SEVERITY_DEFAULT/KIND_PRIOR_DEFAULT/DELTA_LOG_DIVISOR), test-tied; _masked_max avoids the IsInf op (uniform-pooling bundles tract-loadable, test-pinned); CampaignModel rejects non-positive decay_half_life; Rust truncates wire timestamps to microseconds (idr-main emits nanoseconds), accepts Python's falsy-metadata and common naive-ISO shapes, validates manifests (feature-name length, decay, stats shape) instead of panicking, and feeds the head per the manifest's input list; fixtures regenerated with content-addressed ids (campaign_id now discriminates), a real drift baseline (some-but-not-all features flag), budget-case gap checks, salt-searched tie-free rankings, and 9 hand-authored edge-case events covering every extraction branch; parity.rs adds field-set equality + manifest-rejection tests; ranked_indices extracted with tie unit tests both sides; freshness gates in test_system.py replay all committed goldens + feature vectors against the current engine so staleness fails CI. Deferred with documentation: per-event entity caps (parity with Python; trust boundary documented in the crate README), exotic ISO-8601 shapes, rolling Arch rust toolchain in CI (same class as the ruff pin \u2014 revisit on first breakage)",
       "Review closeout \u2014 the four partially-addressed/deferred confirmed findings are now fixed for real: (#17) both stream CLIs default to --max-nodes 4096 with 0=unbounded (engine APIs unchanged; symmetric Python/Rust; dense N x N adjacency bounded on untrusted streams); (#15) rust-toolchain.toml pins 1.96.1 at the repo root and CI installs rustup instead of Arch's rolling rust package (all cargo gates re-verified under 1.96.1); (#7) the Rust timestamp parser now accepts every shape Python's fromisoformat does (comma fractions, basic separator-free forms, hour-only precision, colon-less offsets), pinned by a 12-shape unit table and three new exotic-timestamp fixture events; (#14) Rust golden tolerance tightened 1e-4 -> 2e-6 (goldens are 6-decimal rounded so runtime drift is quantized; measured ORT-vs-golden diff 0.0, tract passes at 2e-6; pytest freshness stays 1e-4 because CI's ORT version floats). Rejected findings stay rejected (each refuted by two verifiers with reproduction); the cross-language tie-order golden remains closed at the unit level because a tie in one runtime is a near-tie in another",
-      "Review closeout hardening after a 3-agent verification pass falsified the timestamp-parity claim: the Rust timestamp parser is now a structural mirror of CPython's fromisoformat algorithm itself (separator-finder heuristics incl. the week-date digit-run parity rule, first-of-any tz scan with Z-must-be-final, sticky basic/extended time modes, one-junk-char-before-offset tolerance, min(remaining,6) fraction quotas with any-length pre-offset tails, offset components unchecked but total < 24h, hour-24 rollover on the RAW day number so 2026-03-00T24:00 parses, Python's year 1..9999 range). Acceptance parity is a pinned contract: committed timestamp_battery.json (~400 shapes, verdicts computed by the reference interpreter, replayed by cargo AND a pytest freshness gate) plus ~200k differential-fuzz shapes across three rounds with zero divergence; an IDR_RT_EXTRA_BATTERY env hook keeps large sweeps reproducible. Also fixed from that pass: stale parity.rs tolerance header and the crate README's contradictory timestamp paragraph"
+      "Review closeout hardening after a 3-agent verification pass falsified the timestamp-parity claim: the Rust timestamp parser is now a structural mirror of CPython's fromisoformat algorithm itself (separator-finder heuristics incl. the week-date digit-run parity rule, first-of-any tz scan with Z-must-be-final, sticky basic/extended time modes, one-junk-char-before-offset tolerance, min(remaining,6) fraction quotas with any-length pre-offset tails, offset components unchecked but total < 24h, hour-24 rollover on the RAW day number so 2026-03-00T24:00 parses, Python's year 1..9999 range). Acceptance parity is a pinned contract: committed timestamp_battery.json (~400 shapes, verdicts computed by the reference interpreter, replayed by cargo AND a pytest freshness gate) plus ~200k differential-fuzz shapes across three rounds with zero divergence; an IDR_RT_EXTRA_BATTERY env hook keeps large sweeps reproducible. Also fixed from that pass: stale parity.rs tolerance header and the crate README's contradictory timestamp paragraph",
+      "Production-readiness assessment + operational logging: honest reports/PRODUCTION_READINESS.md separating strong software readiness from blocked detector readiness (the wall is real labeled data + a realized runtime, not code); added observability.py (opt-in JSON-lines stderr via CLI --log-level, model-load provenance, finding summaries with timing, clean operational errors on missing/corrupt checkpoints), NullHandler so library import stays silent. 118 py tests"
     ],
     "active": [],
     "blocked": []
@@ -413,7 +418,7 @@
       }
     ],
     "tests": [
-      "tests: 114 python (adds W17 review coverage: no-GNN export parity, uniform-pooling export without IsInf, schema-hash rejection, manifest constants == code constants, decay validation, stable tie-break semantics, fixture-freshness gates replaying all committed goldens + feature vectors) + 12 rust bridge tests (3 order-pinned goldens + reduced-comparison nognn golden + manifest rejection + feature vectors incl. 9 edge-case events + ranking/histogram/rounding units) + 3 machine-local idr-common wire tests"
+      "tests: 118 python (adds observability: --log-level emits structured stderr without touching stdout, default level quiet, missing-model logs a clean operational error) + 15 rust bridge tests (incl. the timestamp acceptance battery) + 3 machine-local idr-common wire tests"
     ],
     "benchmarks": [
       {
@@ -523,6 +528,10 @@
     {
       "path": "rust/idr-common-parity/",
       "role": "machine-local integration crate vs real idr_common (path-dep on idr-main tree; not in CI)"
+    },
+    {
+      "path": "reports/PRODUCTION_READINESS.md",
+      "role": "software-vs-detector readiness assessment; staged go-live path (deployment hardening -> real-data validation gate -> real data -> runtime -> integration -> shadow)"
     }
   ],
   "compressed_state": {
@@ -531,7 +540,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-26",
-      "summary": "All 19 confirmed review findings closed for real. The timestamp fix graduated from format-enumeration to a fuzz-verified structural mirror of CPython's fromisoformat with a committed acceptance-battery contract. 115 py + 15 rust tests, all gates green under pinned rustc 1.96.1"
+      "summary": "Assessed production readiness honestly: software readiness strong, detector readiness blocked on real labeled data + a realized runtime (not code). Shipped operational logging (observability.py, CLI --log-level) and reports/PRODUCTION_READINESS.md with a staged go-live path. Next fork awaiting Lee: which track to build (deployment hardening / real-data validation gate / runtime shape)"
     }
   }
 }

@@ -51,6 +51,7 @@ idr-intelligence score events.ndjson --suppress 'ip:' --suppress host:known-scan
 idr-intelligence score events.ndjson --registry campaigns.json               # stable campaign ids across windows (registry updated in place)
 idr-intelligence stream events.ndjson --max-nodes 64                         # event-at-a-time scoring over carried S6 state (default bound 4096; 0 = unbounded)
 idr-intelligence export --weights artifacts/hybrid_model.pt --out artifacts/export  # ONNX bundle for the Rust bridge
+idr-intelligence score events.ndjson --log-level info                        # JSON-lines operational logs to stderr (model provenance, timing, drift); stdout finding unchanged
 
 idr-intelligence benchmark --manifest benchmarks/v1.json                    # frozen regression floors; exit 1 on violation (runs in CI)
 idr-intelligence ablation --folds 3 --replicates 3                          # rolling-origin CV with a statistical best-model verdict
@@ -105,7 +106,9 @@ rust/idr-intelligence-rt/           Rust serving bridge on tract (golden-pinned 
 rust/idr-common-parity/             machine-local wire parity vs the real idr_common crate (not in CI)
 benchmarks/v1.json                  frozen benchmark manifest with regression floors
 docs/ARCHITECTURE.md                integration design + Rust EventKind contract
+src/idr_intelligence/observability.py  opt-in JSON-lines stderr logging (model provenance, timing, drift, evictions)
 reports/AUDIT.md                    model-risk audit + verified findings
+reports/PRODUCTION_READINESS.md     software-vs-detector readiness assessment + staged go-live path
 state.json                          canonical engineering state record (ADR log, evidence)
 ```
 
