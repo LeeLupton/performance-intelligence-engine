@@ -27,12 +27,16 @@ repo into a monorepo of the whole platform.
   the `BgpAnomaly` family). Re-copy from the local idr-main tree if idr-common
   changes there.
 
-## License note (needs Lee's decision)
+## License (resolved)
 
-idr-common is **GPL-2.0-only**; the rest of this repo is **GPL-3.0-or-later**.
-GPL-2.0-only is not compatible with GPLv3, so a downstream *combined
-distribution* has a conflict to resolve. Both codebases are Lee's, so this is
-his call — e.g. relicense idr-common to `GPL-2.0-or-later` (or GPL-3.0) upstream,
-or keep the crates' licenses distinct and combine only at the wire (JSON) level,
-which is how the bridge actually couples to it. The original license is
-preserved here, unchanged, pending that decision.
+This vendored crate is **GPL-2.0-or-later**, relicensed from idr-main's
+original **GPL-2.0-only** by the owner (Lee, who holds copyright on both
+codebases). GPL-2.0-or-later is compatible with the repo's
+**GPL-3.0-or-later**, so the combined-distribution conflict is resolved: a
+downstream may take the whole work under GPLv3.
+
+This is a deliberate divergence from upstream `idr-main/crates/idr-common`,
+which remains GPL-2.0-only at last sync. When re-copying source from idr-main,
+keep this crate's `license = "GPL-2.0-or-later"` in `Cargo.toml` (the `.rs`
+files carry no license headers, so they stay byte-identical). Relicensing
+idr-main upstream to match is optional and Lee's call.
