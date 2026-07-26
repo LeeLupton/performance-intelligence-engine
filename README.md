@@ -100,6 +100,8 @@ src/idr_intelligence/models.py      S6, GNN, gated-attention pooling, checkpoint
 src/idr_intelligence/attack.py      deterministic kind→ATT&CK mapping + next-stage, grounded in real MITRE ATT&CK
 src/idr_intelligence/data/attack_reference.json  canonical tactic order + technique catalog distilled from MITRE ATT&CK STIX
 scripts/ground_attack_reference.py  regenerate the ATT&CK reference from a MITRE Enterprise STIX bundle
+scripts/export_sentinel_events.py   live idr-sentinel anomaly audit log -> IdrEvent NDJSON (real-data bridge)
+scripts/build_kill_chain_dataset.py labeled multi-signal dataset from idr-sim + real BGP -> validate (option 1)
 src/idr_intelligence/simulator.py   11 scenario families with stage-level ground truth
 src/idr_intelligence/training.py    ablation, calibration, scenario gen, rolling-origin CV
 src/idr_intelligence/benchmark.py   frozen-manifest regression floors (CI gate)
@@ -113,6 +115,7 @@ src/idr_intelligence/cli.py         demo · score · stream · export · benchma
 rust/idr-intelligence-rt/           Rust serving bridge on tract (golden-pinned to StreamingScorer)
 rust/idr-common/                    vendored idr_common crate from idr-main (the IdrEvent wire types; see its VENDOR.md)
 rust/idr-common-parity/             wire parity vs the real idr_common types — builds in CI against the vendored crate
+rust/sentinel-label-harness/        red-team label driver: synthetic windows -> real SentinelCorrelator -> correlator-assigned labels (machine-local)
 benchmarks/v1.json                  frozen benchmark manifest with regression floors
 docs/ARCHITECTURE.md                integration design + Rust EventKind contract
 src/idr_intelligence/observability.py  opt-in JSON-lines stderr logging (model provenance, timing, drift, evictions)

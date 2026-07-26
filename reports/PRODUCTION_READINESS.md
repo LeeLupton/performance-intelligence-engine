@@ -61,6 +61,94 @@ These are verified in-repo, not aspirational:
    use, training data, metrics, known failure modes, non-goals) should ship
    with each checkpoint.
 
+## Real telemetry on the idr-main host (measured 2026-07-26)
+
+The engine now provably ingests and scores **real idr-main output**:
+`scripts/export_sentinel_events.py` normalizes the live sentinel audit log
+(`/var/lib/idr-sentinel/state/anomalies.jsonl`) into `IdrEvent` NDJSON, and
+`idr-intelligence score` produced a real finding on a real MOAS/origin-flap
+event (prefix `197.214.36.0/22`, real origin ASNs) — correctly mapped to
+Adversary-in-the-Middle (T1557). **The plumbing works on real data.**
+
+But that same run is why the detector wall stands, now with evidence rather
+than assertion. The real telemetry this platform currently produces is:
+
+- **All-negative.** `production_alerts.json` is `[]` — the deterministic
+  correlator has **never confirmed a campaign**. Every record is an `Observed*`
+  calibration variant, which by idr-common's own definition "emit but do NOT
+  advance the kill-chain." There are zero positive labels.
+- **Single-modality.** It is BGP anomalies only — no socket/beacon/NTP/NVMe,
+  no cross-host kill chains. The engine's entire premise (weak signals across
+  modalities converging into a campaign) cannot be exercised by it.
+- **Out-of-distribution.** Scoring it, the engine flagged 19/22 features as
+  drifted — it is honestly reporting that this real data looks nothing like its
+  synthetic training set.
+
+So real events are exportable and scoreable today, but they **cannot validate
+the detector**: the `validate` gate would correctly refuse a single-class,
+single-modality set. A binding validation still needs labeled *multi-signal
+campaign* windows — from confirmed incidents (none exist yet), a red-team
+exercise that drives the full kill chain, or analyst-adjudicated history.
+
+### The labeled multi-signal pipeline (option 1 — built)
+
+`scripts/build_kill_chain_dataset.py` assembles a labeled multi-modal
+`LabeledWindow` dataset from the detection platform's **own** artifacts, not
+the ML engine's simulator:
+
+- **positives** are distinct campaigns instantiated from idr-main's `idr-sim
+  full_kill_chain` template — the platform's authoritative kill-chain (kernel
+  eBPF + network + hardware), varied per window and optionally truncated
+  (caught mid-chain);
+- **negatives** mix benign-attribute variants of the same modalities (hard
+  negatives) with **real** idr-sentinel BGP clusters (easy, genuinely-real).
+
+Running it end-to-end (build → `demo --data` train → `validate`) works: a
+80-window / 40-40 dataset, 11 modalities, ~490 real BGP events, produces a
+**go** verdict — correctly marked **non-binding**, because the positive class
+is instantiated from a simulated template (no confirmed real campaigns exist).
+
+The metrics come back trivially perfect (ROC-AUC 1.0) even with truncation,
+and that is an **honest negative result worth recording**: idr-sim encodes
+attack-vs-benign in categorical per-event flags (`is_signed`,
+`concurrent_exfil`) plus host convergence, so the classes are separable by
+construction. This validates the **pipeline** — generate, label, train,
+threshold, model-card, verdict, all on real-negative multi-modal data — not
+detection *difficulty*. The engine's genuine hard-case discrimination is
+measured elsewhere, on its own graded/evasion benchmark (`reports/AUDIT.md`),
+where it is not 1.0.
+
+The lasting value is the harness: it is the binding-ready pipeline. The moment
+real labeled positives exist — a red-team run driven through the live sentinel,
+or a confirmed incident that makes `production_alerts.json` non-empty — the
+same three commands produce a **binding** go/no-go with a real model card.
+
+### Red-team label driver — labels from the real correlator (built)
+
+`rust/sentinel-label-harness/` (machine-local) drives synthetic multi-modal
+windows through idr-main's **real `SentinelCorrelator`** and labels each window
+by the correlator's own verdict — an emitted `ImpossibleState` = the platform
+confirmed a campaign. Verified working: 40 correlator-confirmed positives + 40
+non-confirmed negatives, fed to `demo --data` → `validate` → **go**
+(non-binding). The confirmation is genuine: the correlator only fires when the
+events match the real attack semantics (a TTL single-hop intercept on a
+**high-trust** path — Google/Cloudflare/Facebook, seeded in the reputation DB —
+plus an IGMP→QUIC correlation, emitted before the exfil signal so it isn't
+diverted into the panic-condition path). Getting there meant reverse-engineering
+the correlator's actual recipe, not asserting a label.
+
+**Safety:** the harness runs a fresh in-process correlator with
+`auto_panic_enabled = false`, so `panic_response.execute()` returns before the
+`ip link set down` / `nvme format --ses=2` commands are ever reached; nothing
+touches the live daemon or its production state.
+
+This closes the **label** axis: campaign labels now come from idr-main's own
+deterministic correlator rather than a hand-asserted template. It does not close
+the **event** axis — the events are still synthetic, so the verdict stays
+non-binding until real captured telemetry replaces them. And ROC-AUC is again
+1.0, the same honest caveat: the correlator's positives carry attribute-obvious
+malicious semantics, so this validates the pipeline, not detection difficulty.
+
 ## Detector readiness — the wall
 
 This is the load-bearing section. Every accuracy number in this repo comes
