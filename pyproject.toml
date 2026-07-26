@@ -17,6 +17,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
+# ONNX bundle export + the reference runner / parity tests. torch's TorchScript
+# exporter needs the onnx package at export time, so `idr-intelligence export`
+# requires this extra.
+export = ["onnx>=1.22", "onnxruntime>=1.20"]
 
 [project.scripts]
 idr-intelligence = "idr_intelligence.cli:main"
@@ -28,6 +32,10 @@ warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = "sklearn.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "onnxruntime.*"
 ignore_missing_imports = true
 
 [tool.ruff.lint]

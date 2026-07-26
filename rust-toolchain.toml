@@ -1,0 +1,7 @@
+# Pinned Rust toolchain for the rust/ crates — CI installs rustup (not Arch's
+# rolling `rust` package) so `cargo fmt --check` / `clippy -D warnings` cannot
+# break on a distro toolchain bump the repo never chose. Same recurrence class
+# as the pinned ruff rule selection in pyproject.toml (review finding #15).
+[toolchain]
+channel = "1.96.1"
+components = ["clippy", "rustfmt"]

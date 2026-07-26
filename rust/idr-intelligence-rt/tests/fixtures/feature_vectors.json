@@ -1,0 +1,3535 @@
+[
+  {
+    "event": {
+      "id": "ca21edca-52a9-fd7d-0477-d3cee6545d0b",
+      "timestamp": "2025-12-30T03:00:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 6501,
+        "tgid": 6501,
+        "exe_path": "/usr/bin/routine",
+        "exe_sha256": "5afe000000000000000000000000000000000000000000000000000000000004",
+        "dst_ip": "198.51.100.26",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 13
+      }
+    },
+    "delta_seconds": 0.0,
+    "entities": [
+      "host:workstation-04",
+      "process:workstation-04:6501",
+      "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+      "ip:198.51.100.26"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "process:workstation-04:6501",
+        "executes"
+      ],
+      [
+        "process:workstation-04:6501",
+        "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+        "identified_by"
+      ],
+      [
+        "process:workstation-04:6501",
+        "ip:198.51.100.26",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "4e0cd281-2cbe-18e6-eb9f-806f5af98e1c",
+      "timestamp": "2025-12-30T06:00:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 6502,
+        "tgid": 6502,
+        "exe_path": "/usr/bin/routine",
+        "exe_sha256": "5afe000000000000000000000000000000000000000000000000000000000004",
+        "dst_ip": "198.51.100.19",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 12
+      }
+    },
+    "delta_seconds": 10800.0,
+    "entities": [
+      "host:workstation-04",
+      "process:workstation-04:6502",
+      "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+      "ip:198.51.100.19"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "process:workstation-04:6502",
+        "executes"
+      ],
+      [
+        "process:workstation-04:6502",
+        "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+        "identified_by"
+      ],
+      [
+        "process:workstation-04:6502",
+        "ip:198.51.100.19",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.7739495038986206,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "667a1876-630f-dd10-ad42-c3f0d9d28ced",
+      "timestamp": "2025-12-30T09:00:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 6503,
+        "tgid": 6503,
+        "exe_path": "/usr/bin/routine",
+        "exe_sha256": "5afe000000000000000000000000000000000000000000000000000000000004",
+        "dst_ip": "198.51.100.12",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 11
+      }
+    },
+    "delta_seconds": 10800.0,
+    "entities": [
+      "host:workstation-04",
+      "process:workstation-04:6503",
+      "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+      "ip:198.51.100.12"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "process:workstation-04:6503",
+        "executes"
+      ],
+      [
+        "process:workstation-04:6503",
+        "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+        "identified_by"
+      ],
+      [
+        "process:workstation-04:6503",
+        "ip:198.51.100.12",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.7739495038986206,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "4725491a-aba1-b1e1-d939-9262a97ee510",
+      "timestamp": "2025-12-30T12:00:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 6504,
+        "tgid": 6504,
+        "exe_path": "/usr/bin/routine",
+        "exe_sha256": "5afe000000000000000000000000000000000000000000000000000000000004",
+        "dst_ip": "198.51.100.5",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 10
+      }
+    },
+    "delta_seconds": 10800.0,
+    "entities": [
+      "host:workstation-04",
+      "process:workstation-04:6504",
+      "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+      "ip:198.51.100.5"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "process:workstation-04:6504",
+        "executes"
+      ],
+      [
+        "process:workstation-04:6504",
+        "hash:5afe000000000000000000000000000000000000000000000000000000000004",
+        "identified_by"
+      ],
+      [
+        "process:workstation-04:6504",
+        "ip:198.51.100.5",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.7739495038986206,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "ce1979ff-bb09-0e20-349e-c0c681840b74",
+      "timestamp": "2026-01-01T12:08:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "HIGH",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7004,
+        "tgid": 7004,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "deadbeef00000000000000000000000000000000000000000000000000000004",
+        "dst_ip": "203.0.113.24",
+        "dst_port": 443,
+        "is_signed": false
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 0
+      }
+    },
+    "delta_seconds": 173280.0,
+    "entities": [
+      "host:workstation-04",
+      "process:workstation-04:7004",
+      "hash:deadbeef00000000000000000000000000000000000000000000000000000004",
+      "ip:203.0.113.24"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "process:workstation-04:7004",
+        "executes"
+      ],
+      [
+        "process:workstation-04:7004",
+        "hash:deadbeef00000000000000000000000000000000000000000000000000000004",
+        "identified_by"
+      ],
+      [
+        "process:workstation-04:7004",
+        "ip:203.0.113.24",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.11999999731779099,
+      1.0052224397659302,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "2c749cfb-82ad-61f3-3077-5fa325037585",
+      "timestamp": "2026-01-01T12:10:00+00:00",
+      "source": "sentinel_correlation",
+      "severity": "HIGH",
+      "kind": {
+        "type": "bgp_anomaly",
+        "kind": {
+          "kind": "subprefix_hijack_local_infra",
+          "covered_local_prefix": "203.0.113.0/24",
+          "hijacker_asn": 64580
+        },
+        "prefix": "203.0.113.0/25",
+        "observed_origin_asn": 64580,
+        "legitimate_origin_asn": 64500,
+        "confidence": "high",
+        "dst_ip": "203.0.113.24"
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 1
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-04",
+      "ip:203.0.113.24",
+      "prefix:203.0.113.0/25",
+      "asn:64580",
+      "asn:64500"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "ip:203.0.113.24",
+        "connects_to"
+      ],
+      [
+        "ip:203.0.113.24",
+        "prefix:203.0.113.0/25",
+        "belongs_to"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64580",
+        "originated_by"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64500",
+        "originated_by"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.47999998927116394,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "1e4a87dd-55b0-b550-4329-3bec2b77a33a",
+      "timestamp": "2026-01-01T12:12:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "suspicious_beacon",
+        "pid": 7004,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "deadbeef00000000000000000000000000000000000000000000000000000004",
+        "dst_ip": "203.0.113.24",
+        "asn_owner": "Example Transit"
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 2
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-04",
+      "process:workstation-04:7004",
+      "hash:deadbeef00000000000000000000000000000000000000000000000000000004",
+      "ip:203.0.113.24"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "process:workstation-04:7004",
+        "executes"
+      ],
+      [
+        "process:workstation-04:7004",
+        "hash:deadbeef00000000000000000000000000000000000000000000000000000004",
+        "identified_by"
+      ],
+      [
+        "process:workstation-04:7004",
+        "ip:203.0.113.24",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7200000286102295,
+      0.3996492028236389,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "39f5de1b-52d1-2f83-4d2d-00550cb63f07",
+      "timestamp": "2026-01-01T12:17:00+00:00",
+      "source": "network_zeek",
+      "severity": "HIGH",
+      "kind": {
+        "type": "ntp_time_shift",
+        "offset_seconds": 90.0,
+        "ntp_server": "203.0.113.24"
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 3
+      }
+    },
+    "delta_seconds": 300.0,
+    "entities": [
+      "host:workstation-04",
+      "ip:203.0.113.24"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "ip:203.0.113.24",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.41999998688697815,
+      0.4755925238132477,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "669a1624-0148-34da-e4b8-4a7beb3d988b",
+      "timestamp": "2026-01-01T12:19:00+00:00",
+      "source": "network_zeek",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "hsts_time_manipulation",
+        "domain": "update-cdn.example",
+        "cert_expiry": "2025-12-01T00:00:00Z",
+        "ntp_shift_seconds": 90.0,
+        "dst_ip": "203.0.113.24"
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 4
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-04",
+      "ip:203.0.113.24",
+      "domain:update-cdn.example"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "ip:203.0.113.24",
+        "connects_to"
+      ],
+      [
+        "domain:update-cdn.example",
+        "ip:203.0.113.24",
+        "resolves_or_connects"
+      ],
+      [
+        "host:workstation-04",
+        "domain:update-cdn.example",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7799999713897705,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "380a400d-a26a-839a-1736-1370f65a2f45",
+      "timestamp": "2026-01-01T12:23:00+00:00",
+      "source": "hardware_nvme",
+      "severity": "HIGH",
+      "kind": {
+        "type": "nvme_latency_anomaly",
+        "device": "nvme0n1",
+        "baseline_us": 120,
+        "observed_us": 1904,
+        "deviation_pct": 1483.0,
+        "concurrent_exfil": true
+      },
+      "metadata": {
+        "host": "workstation-04",
+        "simulation_seed": 4,
+        "scenario": "stale_preamble",
+        "stage_index": 5
+      }
+    },
+    "delta_seconds": 240.0,
+    "entities": [
+      "host:workstation-04",
+      "device:workstation-04:nvme0n1"
+    ],
+    "edges": [
+      [
+        "host:workstation-04",
+        "device:workstation-04:nvme0n1",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.5199999809265137,
+      0.4570664167404175,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "47111610-9199-ebff-ff43-3883bc9918d1",
+      "timestamp": "2026-01-02T00:08:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "HIGH",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7008,
+        "tgid": 7008,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "deadbeef00000000000000000000000000000000000000000000000000000008",
+        "dst_ip": "203.0.113.28",
+        "dst_port": 443,
+        "is_signed": false,
+        "user": "svc-account-08",
+        "target_host": "workstation-08"
+      },
+      "metadata": {
+        "host": "workstation-08",
+        "simulation_seed": 8,
+        "scenario": "lateral_movement",
+        "stage_index": 0
+      }
+    },
+    "delta_seconds": 42300.0,
+    "entities": [
+      "host:workstation-08",
+      "process:workstation-08:7008",
+      "hash:deadbeef00000000000000000000000000000000000000000000000000000008",
+      "ip:203.0.113.28",
+      "user:svc-account-08"
+    ],
+    "edges": [
+      [
+        "host:workstation-08",
+        "process:workstation-08:7008",
+        "executes"
+      ],
+      [
+        "process:workstation-08:7008",
+        "hash:deadbeef00000000000000000000000000000000000000000000000000000008",
+        "identified_by"
+      ],
+      [
+        "process:workstation-08:7008",
+        "ip:203.0.113.28",
+        "connects_to"
+      ],
+      [
+        "user:svc-account-08",
+        "host:workstation-08",
+        "authenticates_to"
+      ],
+      [
+        "user:svc-account-08",
+        "process:workstation-08:7008",
+        "owns"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.11999999731779099,
+      0.8877138495445251,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "930ca0b3-4421-0bd6-db08-a2b1fecb51e7",
+      "timestamp": "2026-01-02T00:10:00+00:00",
+      "source": "sentinel_correlation",
+      "severity": "HIGH",
+      "kind": {
+        "type": "bgp_anomaly",
+        "kind": {
+          "kind": "subprefix_hijack_local_infra",
+          "covered_local_prefix": "203.0.113.0/24",
+          "hijacker_asn": 64580
+        },
+        "prefix": "203.0.113.0/25",
+        "observed_origin_asn": 64580,
+        "legitimate_origin_asn": 64500,
+        "confidence": "high",
+        "dst_ip": "203.0.113.40",
+        "user": "svc-account-08",
+        "target_host": "sensor-1"
+      },
+      "metadata": {
+        "host": "sensor-1",
+        "simulation_seed": 8,
+        "scenario": "lateral_movement",
+        "stage_index": 1
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:sensor-1",
+      "ip:203.0.113.40",
+      "prefix:203.0.113.0/25",
+      "asn:64580",
+      "asn:64500",
+      "user:svc-account-08"
+    ],
+    "edges": [
+      [
+        "host:sensor-1",
+        "ip:203.0.113.40",
+        "connects_to"
+      ],
+      [
+        "ip:203.0.113.40",
+        "prefix:203.0.113.0/25",
+        "belongs_to"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64580",
+        "originated_by"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64500",
+        "originated_by"
+      ],
+      [
+        "user:svc-account-08",
+        "host:sensor-1",
+        "authenticates_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.47999998927116394,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e51c5031-905c-a7f7-d22a-cda4e0170a2d",
+      "timestamp": "2026-01-02T00:12:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "suspicious_beacon",
+        "pid": 7008,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "cafebabe00000000000000000000000000000000000000000000000000000008",
+        "dst_ip": "203.0.113.56",
+        "asn_owner": "Example Transit",
+        "user": "svc-account-08",
+        "target_host": "workstation-13"
+      },
+      "metadata": {
+        "host": "workstation-13",
+        "simulation_seed": 8,
+        "scenario": "lateral_movement",
+        "stage_index": 2
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-13",
+      "process:workstation-13:7008",
+      "hash:cafebabe00000000000000000000000000000000000000000000000000000008",
+      "ip:203.0.113.56",
+      "user:svc-account-08"
+    ],
+    "edges": [
+      [
+        "host:workstation-13",
+        "process:workstation-13:7008",
+        "executes"
+      ],
+      [
+        "process:workstation-13:7008",
+        "hash:cafebabe00000000000000000000000000000000000000000000000000000008",
+        "identified_by"
+      ],
+      [
+        "process:workstation-13:7008",
+        "ip:203.0.113.56",
+        "connects_to"
+      ],
+      [
+        "user:svc-account-08",
+        "host:workstation-13",
+        "authenticates_to"
+      ],
+      [
+        "user:svc-account-08",
+        "process:workstation-13:7008",
+        "owns"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7200000286102295,
+      0.3996492028236389,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "2fce059d-0b5d-b98b-13c2-93471954b947",
+      "timestamp": "2026-01-02T00:17:00+00:00",
+      "source": "network_zeek",
+      "severity": "HIGH",
+      "kind": {
+        "type": "ntp_time_shift",
+        "offset_seconds": 90.0,
+        "ntp_server": "192.0.2.18",
+        "user": "svc-account-08",
+        "target_host": "server-08"
+      },
+      "metadata": {
+        "host": "server-08",
+        "simulation_seed": 8,
+        "scenario": "lateral_movement",
+        "stage_index": 3
+      }
+    },
+    "delta_seconds": 300.0,
+    "entities": [
+      "host:server-08",
+      "ip:192.0.2.18",
+      "user:svc-account-08"
+    ],
+    "edges": [
+      [
+        "host:server-08",
+        "ip:192.0.2.18",
+        "connects_to"
+      ],
+      [
+        "user:svc-account-08",
+        "host:server-08",
+        "authenticates_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.41999998688697815,
+      0.4755925238132477,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "d74f8547-78b6-a5e6-639b-32ee0043dbbb",
+      "timestamp": "2026-01-02T00:19:00+00:00",
+      "source": "network_zeek",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "hsts_time_manipulation",
+        "domain": "update-cdn.example",
+        "cert_expiry": "2025-12-01T00:00:00Z",
+        "ntp_shift_seconds": 90.0,
+        "dst_ip": "198.51.100.64",
+        "user": "svc-account-08",
+        "target_host": "laptop-08"
+      },
+      "metadata": {
+        "host": "laptop-08",
+        "simulation_seed": 8,
+        "scenario": "lateral_movement",
+        "stage_index": 4
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:laptop-08",
+      "ip:198.51.100.64",
+      "domain:update-cdn.example",
+      "user:svc-account-08"
+    ],
+    "edges": [
+      [
+        "host:laptop-08",
+        "ip:198.51.100.64",
+        "connects_to"
+      ],
+      [
+        "domain:update-cdn.example",
+        "ip:198.51.100.64",
+        "resolves_or_connects"
+      ],
+      [
+        "host:laptop-08",
+        "domain:update-cdn.example",
+        "queries_or_visits"
+      ],
+      [
+        "user:svc-account-08",
+        "host:laptop-08",
+        "authenticates_to"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7799999713897705,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "dbc422ff-fb20-717f-6637-bbc84352b742",
+      "timestamp": "2026-01-02T00:23:00+00:00",
+      "source": "hardware_nvme",
+      "severity": "HIGH",
+      "kind": {
+        "type": "nvme_latency_anomaly",
+        "device": "nvme0n1",
+        "baseline_us": 120,
+        "observed_us": 1908,
+        "deviation_pct": 1483.0,
+        "concurrent_exfil": true,
+        "user": "svc-account-08",
+        "target_host": "storage-03"
+      },
+      "metadata": {
+        "host": "storage-03",
+        "simulation_seed": 8,
+        "scenario": "lateral_movement",
+        "stage_index": 5
+      }
+    },
+    "delta_seconds": 240.0,
+    "entities": [
+      "host:storage-03",
+      "device:storage-03:nvme0n1",
+      "user:svc-account-08"
+    ],
+    "edges": [
+      [
+        "host:storage-03",
+        "device:storage-03:nvme0n1",
+        "contains"
+      ],
+      [
+        "user:svc-account-08",
+        "host:storage-03",
+        "authenticates_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.5199999809265137,
+      0.4570664167404175,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "be5018b6-213e-5c76-f1e8-aec6691f2160",
+      "timestamp": "2026-01-02T09:08:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "HIGH",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7011,
+        "tgid": 7011,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "deadbeef0000000000000000000000000000000000000000000000000000000b",
+        "dst_ip": "203.0.113.31",
+        "dst_port": 443,
+        "is_signed": false
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 0
+      }
+    },
+    "delta_seconds": 31500.0,
+    "entities": [
+      "host:workstation-11",
+      "process:workstation-11:7011",
+      "hash:deadbeef0000000000000000000000000000000000000000000000000000000b",
+      "ip:203.0.113.31"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "process:workstation-11:7011",
+        "executes"
+      ],
+      [
+        "process:workstation-11:7011",
+        "hash:deadbeef0000000000000000000000000000000000000000000000000000000b",
+        "identified_by"
+      ],
+      [
+        "process:workstation-11:7011",
+        "ip:203.0.113.31",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.11999999731779099,
+      0.8631478548049927,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "7a619bb6-f9f0-32e8-cef1-ea2441dedd7f",
+      "timestamp": "2026-01-02T09:09:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7311,
+        "tgid": 7311,
+        "exe_path": "/usr/bin/browser",
+        "exe_sha256": "0badf00d0000000000000000000000000000000000000000000000000000000b",
+        "dst_ip": "198.51.100.12",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 6
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:workstation-11",
+      "process:workstation-11:7311",
+      "hash:0badf00d0000000000000000000000000000000000000000000000000000000b",
+      "ip:198.51.100.12"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "process:workstation-11:7311",
+        "executes"
+      ],
+      [
+        "process:workstation-11:7311",
+        "hash:0badf00d0000000000000000000000000000000000000000000000000000000b",
+        "identified_by"
+      ],
+      [
+        "process:workstation-11:7311",
+        "ip:198.51.100.12",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.34257280826568604,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "dd1b33ee-3323-5f24-bb97-51406073cd7b",
+      "timestamp": "2026-01-02T09:10:00+00:00",
+      "source": "sentinel_correlation",
+      "severity": "HIGH",
+      "kind": {
+        "type": "bgp_anomaly",
+        "kind": {
+          "kind": "subprefix_hijack_local_infra",
+          "covered_local_prefix": "203.0.113.0/24",
+          "hijacker_asn": 64580
+        },
+        "prefix": "203.0.113.0/25",
+        "observed_origin_asn": 64580,
+        "legitimate_origin_asn": 64500,
+        "confidence": "high",
+        "dst_ip": "203.0.113.31"
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 1
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:workstation-11",
+      "ip:203.0.113.31",
+      "prefix:203.0.113.0/25",
+      "asn:64580",
+      "asn:64500"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "ip:203.0.113.31",
+        "connects_to"
+      ],
+      [
+        "ip:203.0.113.31",
+        "prefix:203.0.113.0/25",
+        "belongs_to"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64580",
+        "originated_by"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64500",
+        "originated_by"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.47999998927116394,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "9e560004-5630-145b-8934-8c5d7965d296",
+      "timestamp": "2026-01-02T09:12:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "suspicious_beacon",
+        "pid": 7011,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "deadbeef0000000000000000000000000000000000000000000000000000000b",
+        "dst_ip": "203.0.113.31",
+        "asn_owner": "Example Transit"
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 2
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-11",
+      "process:workstation-11:7011",
+      "hash:deadbeef0000000000000000000000000000000000000000000000000000000b",
+      "ip:203.0.113.31"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "process:workstation-11:7011",
+        "executes"
+      ],
+      [
+        "process:workstation-11:7011",
+        "hash:deadbeef0000000000000000000000000000000000000000000000000000000b",
+        "identified_by"
+      ],
+      [
+        "process:workstation-11:7011",
+        "ip:203.0.113.31",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7200000286102295,
+      0.3996492028236389,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e3c404e6-6ede-050d-18bc-9f3c11d1a07c",
+      "timestamp": "2026-01-02T09:14:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7312,
+        "tgid": 7312,
+        "exe_path": "/usr/bin/browser",
+        "exe_sha256": "0badf00d0000000000000000000000000000000000000000000000000000000b",
+        "dst_ip": "198.51.100.25",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 7
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-11",
+      "process:workstation-11:7312",
+      "hash:0badf00d0000000000000000000000000000000000000000000000000000000b",
+      "ip:198.51.100.25"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "process:workstation-11:7312",
+        "executes"
+      ],
+      [
+        "process:workstation-11:7312",
+        "hash:0badf00d0000000000000000000000000000000000000000000000000000000b",
+        "identified_by"
+      ],
+      [
+        "process:workstation-11:7312",
+        "ip:198.51.100.25",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.3996492028236389,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "4afdce61-140a-6841-e34a-944e240bdb1a",
+      "timestamp": "2026-01-02T09:17:00+00:00",
+      "source": "network_zeek",
+      "severity": "HIGH",
+      "kind": {
+        "type": "ntp_time_shift",
+        "offset_seconds": 90.0,
+        "ntp_server": "203.0.113.31"
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 3
+      }
+    },
+    "delta_seconds": 180.0,
+    "entities": [
+      "host:workstation-11",
+      "ip:203.0.113.31"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "ip:203.0.113.31",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.41999998688697815,
+      0.43320807814598083,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "f30cffc8-68e4-fe17-3d45-fc068f0f26e0",
+      "timestamp": "2026-01-02T09:19:00+00:00",
+      "source": "network_zeek",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "hsts_time_manipulation",
+        "domain": "update-cdn.example",
+        "cert_expiry": "2025-12-01T00:00:00Z",
+        "ntp_shift_seconds": 90.0,
+        "dst_ip": "203.0.113.31"
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 4
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-11",
+      "ip:203.0.113.31",
+      "domain:update-cdn.example"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "ip:203.0.113.31",
+        "connects_to"
+      ],
+      [
+        "domain:update-cdn.example",
+        "ip:203.0.113.31",
+        "resolves_or_connects"
+      ],
+      [
+        "host:workstation-11",
+        "domain:update-cdn.example",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7799999713897705,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "c02c90d3-f1a3-739a-0d73-38796818d250",
+      "timestamp": "2026-01-02T09:20:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7313,
+        "tgid": 7313,
+        "exe_path": "/usr/bin/browser",
+        "exe_sha256": "0badf00d0000000000000000000000000000000000000000000000000000000b",
+        "dst_ip": "198.51.100.38",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 8
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:workstation-11",
+      "process:workstation-11:7313",
+      "hash:0badf00d0000000000000000000000000000000000000000000000000000000b",
+      "ip:198.51.100.38"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "process:workstation-11:7313",
+        "executes"
+      ],
+      [
+        "process:workstation-11:7313",
+        "hash:0badf00d0000000000000000000000000000000000000000000000000000000b",
+        "identified_by"
+      ],
+      [
+        "process:workstation-11:7313",
+        "ip:198.51.100.38",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.34257280826568604,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "99fdc97d-ceaa-a63a-051d-521152079ad4",
+      "timestamp": "2026-01-02T09:23:00+00:00",
+      "source": "hardware_nvme",
+      "severity": "HIGH",
+      "kind": {
+        "type": "nvme_latency_anomaly",
+        "device": "nvme0n1",
+        "baseline_us": 120,
+        "observed_us": 1911,
+        "deviation_pct": 1483.0,
+        "concurrent_exfil": true
+      },
+      "metadata": {
+        "host": "workstation-11",
+        "simulation_seed": 11,
+        "scenario": "distractor",
+        "stage_index": 5
+      }
+    },
+    "delta_seconds": 180.0,
+    "entities": [
+      "host:workstation-11",
+      "device:workstation-11:nvme0n1"
+    ],
+    "edges": [
+      [
+        "host:workstation-11",
+        "device:workstation-11:nvme0n1",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.5199999809265137,
+      0.43320807814598083,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "73387f2f-83e1-6389-a120-957e0af79826",
+      "timestamp": "2026-01-01T06:08:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "HIGH",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7002,
+        "tgid": 7002,
+        "exe_path": "/usr/bin/updater",
+        "exe_sha256": "deadbeef00000000000000000000000000000000000000000000000000000002",
+        "dst_ip": "203.0.113.22",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-02",
+        "simulation_seed": 2,
+        "scenario": "legit_update",
+        "stage_index": 0
+      }
+    },
+    "delta_seconds": 0.0,
+    "entities": [
+      "host:workstation-02",
+      "process:workstation-02:7002",
+      "hash:deadbeef00000000000000000000000000000000000000000000000000000002",
+      "ip:203.0.113.22"
+    ],
+    "edges": [
+      [
+        "host:workstation-02",
+        "process:workstation-02:7002",
+        "executes"
+      ],
+      [
+        "process:workstation-02:7002",
+        "hash:deadbeef00000000000000000000000000000000000000000000000000000002",
+        "identified_by"
+      ],
+      [
+        "process:workstation-02:7002",
+        "ip:203.0.113.22",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.11999999731779099,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "c50bc3e2-66c7-85ad-c6ca-95c45bde471b",
+      "timestamp": "2026-01-01T06:10:00+00:00",
+      "source": "sentinel_correlation",
+      "severity": "HIGH",
+      "kind": {
+        "type": "bgp_anomaly",
+        "kind": {
+          "kind": "route_leak_benign",
+          "covered_local_prefix": "203.0.113.0/24",
+          "hijacker_asn": 64500
+        },
+        "prefix": "203.0.113.0/25",
+        "observed_origin_asn": 64500,
+        "legitimate_origin_asn": 64500,
+        "confidence": "low",
+        "dst_ip": "203.0.113.22"
+      },
+      "metadata": {
+        "host": "workstation-02",
+        "simulation_seed": 2,
+        "scenario": "legit_update",
+        "stage_index": 1
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-02",
+      "ip:203.0.113.22",
+      "prefix:203.0.113.0/25",
+      "asn:64500"
+    ],
+    "edges": [
+      [
+        "host:workstation-02",
+        "ip:203.0.113.22",
+        "connects_to"
+      ],
+      [
+        "ip:203.0.113.22",
+        "prefix:203.0.113.0/25",
+        "belongs_to"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64500",
+        "originated_by"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.47999998927116394,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "9671cecb-af2f-2546-9b61-0150917b986d",
+      "timestamp": "2026-01-01T06:12:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "suspicious_beacon",
+        "pid": 7902,
+        "exe_path": "/usr/bin/updater",
+        "exe_sha256": "cafebabe00000000000000000000000000000000000000000000000000000002",
+        "dst_ip": "203.0.113.22",
+        "asn_owner": "Example Transit"
+      },
+      "metadata": {
+        "host": "workstation-02",
+        "simulation_seed": 2,
+        "scenario": "legit_update",
+        "stage_index": 2
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-02",
+      "process:workstation-02:7902",
+      "hash:cafebabe00000000000000000000000000000000000000000000000000000002",
+      "ip:203.0.113.22"
+    ],
+    "edges": [
+      [
+        "host:workstation-02",
+        "process:workstation-02:7902",
+        "executes"
+      ],
+      [
+        "process:workstation-02:7902",
+        "hash:cafebabe00000000000000000000000000000000000000000000000000000002",
+        "identified_by"
+      ],
+      [
+        "process:workstation-02:7902",
+        "ip:203.0.113.22",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7200000286102295,
+      0.3996492028236389,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "c5bbf5ec-b2d1-f8ea-5e67-170232d2edc8",
+      "timestamp": "2026-01-01T06:17:00+00:00",
+      "source": "network_zeek",
+      "severity": "HIGH",
+      "kind": {
+        "type": "ntp_time_shift",
+        "offset_seconds": 0.4,
+        "ntp_server": "203.0.113.22"
+      },
+      "metadata": {
+        "host": "workstation-02",
+        "simulation_seed": 2,
+        "scenario": "legit_update",
+        "stage_index": 3
+      }
+    },
+    "delta_seconds": 300.0,
+    "entities": [
+      "host:workstation-02",
+      "ip:203.0.113.22"
+    ],
+    "edges": [
+      [
+        "host:workstation-02",
+        "ip:203.0.113.22",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.41999998688697815,
+      0.4755925238132477,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "51b008c9-13ff-cc80-9413-90865a2bd5b2",
+      "timestamp": "2026-01-01T06:19:00+00:00",
+      "source": "network_zeek",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "hsts_time_manipulation",
+        "domain": "update-cdn.example",
+        "cert_expiry": "2025-12-01T00:00:00Z",
+        "ntp_shift_seconds": 0.4,
+        "dst_ip": "203.0.113.22"
+      },
+      "metadata": {
+        "host": "workstation-02",
+        "simulation_seed": 2,
+        "scenario": "legit_update",
+        "stage_index": 4
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-02",
+      "ip:203.0.113.22",
+      "domain:update-cdn.example"
+    ],
+    "edges": [
+      [
+        "host:workstation-02",
+        "ip:203.0.113.22",
+        "connects_to"
+      ],
+      [
+        "domain:update-cdn.example",
+        "ip:203.0.113.22",
+        "resolves_or_connects"
+      ],
+      [
+        "host:workstation-02",
+        "domain:update-cdn.example",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7799999713897705,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "7a130689-b5de-4073-32b8-2bea5fa5d839",
+      "timestamp": "2026-01-01T06:23:00+00:00",
+      "source": "hardware_nvme",
+      "severity": "HIGH",
+      "kind": {
+        "type": "nvme_latency_anomaly",
+        "device": "nvme0n1",
+        "baseline_us": 120,
+        "observed_us": 1902,
+        "deviation_pct": 40.0,
+        "concurrent_exfil": false
+      },
+      "metadata": {
+        "host": "workstation-02",
+        "simulation_seed": 2,
+        "scenario": "legit_update",
+        "stage_index": 5
+      }
+    },
+    "delta_seconds": 240.0,
+    "entities": [
+      "host:workstation-02",
+      "device:workstation-02:nvme0n1"
+    ],
+    "edges": [
+      [
+        "host:workstation-02",
+        "device:workstation-02:nvme0n1",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.5199999809265137,
+      0.4570664167404175,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "74365042-334c-d315-9c0f-f1adb1cc17f7",
+      "timestamp": "2026-01-01T21:08:00+00:00",
+      "source": "sentinel_correlation",
+      "severity": "HIGH",
+      "kind": {
+        "type": "bgp_anomaly",
+        "kind": {
+          "kind": "subprefix_hijack_local_infra",
+          "covered_local_prefix": "203.0.113.0/24",
+          "hijacker_asn": 64580
+        },
+        "prefix": "203.0.113.0/25",
+        "observed_origin_asn": 64580,
+        "legitimate_origin_asn": 64500,
+        "confidence": "high",
+        "dst_ip": "203.0.113.39"
+      },
+      "metadata": {
+        "host": "sensor-0",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 1
+      }
+    },
+    "delta_seconds": 53100.0,
+    "entities": [
+      "host:sensor-0",
+      "ip:203.0.113.39",
+      "prefix:203.0.113.0/25",
+      "asn:64580",
+      "asn:64500"
+    ],
+    "edges": [
+      [
+        "host:sensor-0",
+        "ip:203.0.113.39",
+        "connects_to"
+      ],
+      [
+        "ip:203.0.113.39",
+        "prefix:203.0.113.0/25",
+        "belongs_to"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64580",
+        "originated_by"
+      ],
+      [
+        "prefix:203.0.113.0/25",
+        "asn:64500",
+        "originated_by"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.47999998927116394,
+      0.9066625833511353,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "c01fbbfc-d5bc-6e88-a596-7a5606a99979",
+      "timestamp": "2026-01-01T21:10:00+00:00",
+      "source": "network_zeek",
+      "severity": "HIGH",
+      "kind": {
+        "type": "ntp_time_shift",
+        "offset_seconds": 90.0,
+        "ntp_server": "192.0.2.17"
+      },
+      "metadata": {
+        "host": "server-07",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 3
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:server-07",
+      "ip:192.0.2.17"
+    ],
+    "edges": [
+      [
+        "host:server-07",
+        "ip:192.0.2.17",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.41999998688697815,
+      0.3996492028236389,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "db3911e9-d6ff-bfce-5ce2-5d4069061d79",
+      "timestamp": "2026-01-01T21:11:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7307,
+        "tgid": 7307,
+        "exe_path": "/usr/bin/browser",
+        "exe_sha256": "0badf00d00000000000000000000000000000000000000000000000000000007",
+        "dst_ip": "198.51.100.8",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-07",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 6
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:workstation-07",
+      "process:workstation-07:7307",
+      "hash:0badf00d00000000000000000000000000000000000000000000000000000007",
+      "ip:198.51.100.8"
+    ],
+    "edges": [
+      [
+        "host:workstation-07",
+        "process:workstation-07:7307",
+        "executes"
+      ],
+      [
+        "process:workstation-07:7307",
+        "hash:0badf00d00000000000000000000000000000000000000000000000000000007",
+        "identified_by"
+      ],
+      [
+        "process:workstation-07:7307",
+        "ip:198.51.100.8",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.34257280826568604,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "d381fe82-e511-8509-85e1-f485a7eb40cb",
+      "timestamp": "2026-01-01T21:12:00+00:00",
+      "source": "hardware_nvme",
+      "severity": "HIGH",
+      "kind": {
+        "type": "nvme_latency_anomaly",
+        "device": "nvme0n1",
+        "baseline_us": 120,
+        "observed_us": 1907,
+        "deviation_pct": 1483.0,
+        "concurrent_exfil": true
+      },
+      "metadata": {
+        "host": "storage-02",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 5
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:storage-02",
+      "device:storage-02:nvme0n1"
+    ],
+    "edges": [
+      [
+        "host:storage-02",
+        "device:storage-02:nvme0n1",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.5199999809265137,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "00071075-587f-be5c-8dfb-4aa550d1c41b",
+      "timestamp": "2026-01-01T21:16:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7308,
+        "tgid": 7308,
+        "exe_path": "/usr/bin/browser",
+        "exe_sha256": "0badf00d00000000000000000000000000000000000000000000000000000007",
+        "dst_ip": "198.51.100.21",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-07",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 7
+      }
+    },
+    "delta_seconds": 240.0,
+    "entities": [
+      "host:workstation-07",
+      "process:workstation-07:7308",
+      "hash:0badf00d00000000000000000000000000000000000000000000000000000007",
+      "ip:198.51.100.21"
+    ],
+    "edges": [
+      [
+        "host:workstation-07",
+        "process:workstation-07:7308",
+        "executes"
+      ],
+      [
+        "process:workstation-07:7308",
+        "hash:0badf00d00000000000000000000000000000000000000000000000000000007",
+        "identified_by"
+      ],
+      [
+        "process:workstation-07:7308",
+        "ip:198.51.100.21",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.4570664167404175,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "8e7855be-424f-f8ab-f6ff-5f303495a417",
+      "timestamp": "2026-01-01T21:17:00+00:00",
+      "source": "network_zeek",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "hsts_time_manipulation",
+        "domain": "update-cdn.example",
+        "cert_expiry": "2025-12-01T00:00:00Z",
+        "ntp_shift_seconds": 90.0,
+        "dst_ip": "198.51.100.63"
+      },
+      "metadata": {
+        "host": "laptop-07",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 4
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:laptop-07",
+      "ip:198.51.100.63",
+      "domain:update-cdn.example"
+    ],
+    "edges": [
+      [
+        "host:laptop-07",
+        "ip:198.51.100.63",
+        "connects_to"
+      ],
+      [
+        "domain:update-cdn.example",
+        "ip:198.51.100.63",
+        "resolves_or_connects"
+      ],
+      [
+        "host:laptop-07",
+        "domain:update-cdn.example",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7799999713897705,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "15851329-7406-13c3-a185-331e301d3c39",
+      "timestamp": "2026-01-01T21:19:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "HIGH",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7007,
+        "tgid": 7007,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "deadbeef00000000000000000000000000000000000000000000000000000007",
+        "dst_ip": "203.0.113.27",
+        "dst_port": 443,
+        "is_signed": false
+      },
+      "metadata": {
+        "host": "workstation-07",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 0
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-07",
+      "process:workstation-07:7007",
+      "hash:deadbeef00000000000000000000000000000000000000000000000000000007",
+      "ip:203.0.113.27"
+    ],
+    "edges": [
+      [
+        "host:workstation-07",
+        "process:workstation-07:7007",
+        "executes"
+      ],
+      [
+        "process:workstation-07:7007",
+        "hash:deadbeef00000000000000000000000000000000000000000000000000000007",
+        "identified_by"
+      ],
+      [
+        "process:workstation-07:7007",
+        "ip:203.0.113.27",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.11999999731779099,
+      0.3996492028236389,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e790ae47-e345-dc8b-92fe-05462aaddc30",
+      "timestamp": "2026-01-01T21:21:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "kind": {
+        "type": "socket_lineage",
+        "pid": 7309,
+        "tgid": 7309,
+        "exe_path": "/usr/bin/browser",
+        "exe_sha256": "0badf00d00000000000000000000000000000000000000000000000000000007",
+        "dst_ip": "198.51.100.34",
+        "dst_port": 443,
+        "is_signed": true
+      },
+      "metadata": {
+        "host": "workstation-07",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 8
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-07",
+      "process:workstation-07:7309",
+      "hash:0badf00d00000000000000000000000000000000000000000000000000000007",
+      "ip:198.51.100.34"
+    ],
+    "edges": [
+      [
+        "host:workstation-07",
+        "process:workstation-07:7309",
+        "executes"
+      ],
+      [
+        "process:workstation-07:7309",
+        "hash:0badf00d00000000000000000000000000000000000000000000000000000007",
+        "identified_by"
+      ],
+      [
+        "process:workstation-07:7309",
+        "ip:198.51.100.34",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.3996492028236389,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e9d4ee38-1e3d-12d1-1a7c-98d0cf4c7f23",
+      "timestamp": "2026-01-01T21:23:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "CRITICAL",
+      "kind": {
+        "type": "suspicious_beacon",
+        "pid": 7907,
+        "exe_path": "/tmp/.cache/update",
+        "exe_sha256": "cafebabe00000000000000000000000000000000000000000000000000000007",
+        "dst_ip": "203.0.113.55",
+        "asn_owner": "Example Transit"
+      },
+      "metadata": {
+        "host": "workstation-12",
+        "simulation_seed": 7,
+        "scenario": "distractor",
+        "stage_index": 2
+      }
+    },
+    "delta_seconds": 120.0,
+    "entities": [
+      "host:workstation-12",
+      "process:workstation-12:7907",
+      "hash:cafebabe00000000000000000000000000000000000000000000000000000007",
+      "ip:203.0.113.55"
+    ],
+    "edges": [
+      [
+        "host:workstation-12",
+        "process:workstation-12:7907",
+        "executes"
+      ],
+      [
+        "process:workstation-12:7907",
+        "hash:cafebabe00000000000000000000000000000000000000000000000000000007",
+        "identified_by"
+      ],
+      [
+        "process:workstation-12:7907",
+        "ip:203.0.113.55",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7200000286102295,
+      0.3996492028236389,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "timestamp": "2026-03-01T00:00:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "triage_classification",
+        "family": "loader",
+        "sha256": "ABCDEF0000000000000000000000000000000000000000000000000000000000",
+        "dest_ips": [
+          "203.0.113.9",
+          "203.0.113.9",
+          "198.51.100.7"
+        ],
+        "source_path": "/tmp/x"
+      }
+    },
+    "delta_seconds": 0.0,
+    "entities": [
+      "host:edge-host",
+      "hash:abcdef0000000000000000000000000000000000000000000000000000000000",
+      "ip:203.0.113.9",
+      "ip:198.51.100.7"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "hash:abcdef0000000000000000000000000000000000000000000000000000000000",
+        "identified_by"
+      ],
+      [
+        "host:edge-host",
+        "ip:203.0.113.9",
+        "connects_to"
+      ],
+      [
+        "host:edge-host",
+        "ip:198.51.100.7",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.6000000238418579,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000002",
+      "timestamp": "2026-03-01T00:01:00.123456789+00:00",
+      "source": "network_zeek",
+      "severity": "WARNING",
+      "metadata": {
+        "hostname": "fallback-host"
+      },
+      "kind": {
+        "type": "octet_reversal_detected",
+        "forward_ip": "142.251.211.170",
+        "reversed_ip": "170.211.251.142",
+        "ptr_query": "MiXeD.PTR.Example.COM..",
+        "forward_asn": "AS15169",
+        "reversed_asn": "AS21852"
+      }
+    },
+    "delta_seconds": 60.123456,
+    "entities": [
+      "host:fallback-host",
+      "ip:142.251.211.170",
+      "ip:170.211.251.142",
+      "domain:mixed.ptr.example.com"
+    ],
+    "edges": [
+      [
+        "host:fallback-host",
+        "ip:142.251.211.170",
+        "connects_to"
+      ],
+      [
+        "host:fallback-host",
+        "ip:170.211.251.142",
+        "connects_to"
+      ],
+      [
+        "domain:mixed.ptr.example.com",
+        "ip:142.251.211.170",
+        "resolves_or_connects"
+      ],
+      [
+        "domain:mixed.ptr.example.com",
+        "ip:170.211.251.142",
+        "resolves_or_connects"
+      ],
+      [
+        "host:fallback-host",
+        "domain:mixed.ptr.example.com",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.25,
+      0.7400000095367432,
+      0.34274131059646606,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000003",
+      "timestamp": "2026-03-01 00:02:00",
+      "source": "network_suricata",
+      "severity": "high",
+      "metadata": null,
+      "kind": {
+        "type": "unknown_future_kind",
+        "sni": "cdn.example",
+        "src_ip": "192.0.2.1",
+        "gateway_ip": "192.0.2.254"
+      }
+    },
+    "delta_seconds": 59.876544,
+    "entities": [
+      "host:unknown-host",
+      "ip:192.0.2.1",
+      "ip:192.0.2.254"
+    ],
+    "edges": [
+      [
+        "host:unknown-host",
+        "ip:192.0.2.1",
+        "connects_to"
+      ],
+      [
+        "host:unknown-host",
+        "ip:192.0.2.254",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.18000000715255737,
+      0.34240400791168213,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000004",
+      "timestamp": "2026-03-01T00:03:00",
+      "source": "custom_source",
+      "severity": "WEIRD",
+      "metadata": [],
+      "kind": {
+        "type": "mac_flapping",
+        "gateway_ip": "192.0.2.254",
+        "old_mac": "aa:bb",
+        "new_mac": "cc:dd"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:unknown-host",
+      "ip:192.0.2.254"
+    ],
+    "edges": [
+      [
+        "host:unknown-host",
+        "ip:192.0.2.254",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.15000000596046448,
+      0.6399999856948853,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000005",
+      "timestamp": "2026-03-01T00:04:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "INFO",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "socket_lineage",
+        "tgid": 4100,
+        "exe_path": "/usr/bin/x",
+        "exe_sha256": "",
+        "dst_ip": "",
+        "dst_port": 443,
+        "is_signed": true
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "process:edge-host:4100"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "process:edge-host:4100",
+        "executes"
+      ]
+    ],
+    "features": [
+      0.05000000074505806,
+      0.11999999731779099,
+      0.34257280826568604,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000006",
+      "timestamp": "2026-03-01T00:05:00+00:00",
+      "source": "kernel_ebpf",
+      "severity": "CRITICAL",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "suspicious_beacon",
+        "pid": 0,
+        "tgid": 0,
+        "exe_path": "/tmp/y",
+        "exe_sha256": "DEADBEEF11111111111111111111111111111111111111111111111111111111",
+        "dst_ip": "203.0.113.9",
+        "asn_owner": "Example Transit",
+        "user": "SVC-Account",
+        "session_id": 0,
+        "cloud_resource": "ARN:AWS:S3:::Bucket/Key"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "process:edge-host:0",
+      "hash:deadbeef11111111111111111111111111111111111111111111111111111111",
+      "ip:203.0.113.9",
+      "user:svc-account",
+      "cloud:arn:aws:s3:::bucket/key"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "process:edge-host:0",
+        "executes"
+      ],
+      [
+        "process:edge-host:0",
+        "hash:deadbeef11111111111111111111111111111111111111111111111111111111",
+        "identified_by"
+      ],
+      [
+        "process:edge-host:0",
+        "ip:203.0.113.9",
+        "connects_to"
+      ],
+      [
+        "user:svc-account",
+        "host:edge-host",
+        "authenticates_to"
+      ],
+      [
+        "user:svc-account",
+        "process:edge-host:0",
+        "owns"
+      ],
+      [
+        "user:svc-account",
+        "cloud:arn:aws:s3:::bucket/key",
+        "accesses"
+      ]
+    ],
+    "features": [
+      0.8500000238418579,
+      0.7200000286102295,
+      0.34257280826568604,
+      1.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000007",
+      "timestamp": "2026-03-01T00:06:00+00:00",
+      "source": "hardware_rtc",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "rtc_clock_divergence",
+        "software_time": "x",
+        "rtc_time": "y",
+        "drift_seconds": 90.0,
+        "username": "Backup-Operator",
+        "sid": "S-1-5-21",
+        "arn": "arn:aws:iam::1:role/Admin",
+        "target_host": "server-1",
+        "device": "rtc0"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "device:edge-host:rtc0",
+      "user:backup-operator",
+      "session:edge-host:S-1-5-21",
+      "cloud:arn:aws:iam::1:role/admin"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "device:edge-host:rtc0",
+        "contains"
+      ],
+      [
+        "user:backup-operator",
+        "host:edge-host",
+        "authenticates_to"
+      ],
+      [
+        "user:backup-operator",
+        "cloud:arn:aws:iam::1:role/admin",
+        "accesses"
+      ],
+      [
+        "host:edge-host",
+        "session:edge-host:S-1-5-21",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.3799999952316284,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000008",
+      "timestamp": "2026-03-01T00:07:00+00:00",
+      "source": "sentinel_correlation",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "bgp_anomaly",
+        "kind": {
+          "kind": "route_leak_benign"
+        },
+        "prefix": "203.0.113.0/25",
+        "observed_origin_asn": 0,
+        "legitimate_origin_asn": null,
+        "confidence": "low"
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "prefix:203.0.113.0/25",
+      "asn:0"
+    ],
+    "edges": [
+      [
+        "prefix:203.0.113.0/25",
+        "asn:0",
+        "originated_by"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.47999998927116394,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-000000000009",
+      "timestamp": "2026-03-01T00:08:00+00:00",
+      "source": "network_zeek",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "hsts_time_manipulation",
+        "domain": "Update-CDN.Example.",
+        "cert_expiry": "2025-12-01",
+        "ntp_shift_seconds": 90.0,
+        "account": "",
+        "user": null
+      }
+    },
+    "delta_seconds": 60.0,
+    "entities": [
+      "host:edge-host",
+      "domain:update-cdn.example"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "domain:update-cdn.example",
+        "queries_or_visits"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.7799999713897705,
+      0.34257280826568604,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-00000000000a",
+      "timestamp": "2026-03-01T00:09:30,5",
+      "source": "network_zeek",
+      "severity": "WARNING",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "ntp_time_shift",
+        "offset_seconds": 90.0,
+        "ntp_server": "192.0.2.9"
+      }
+    },
+    "delta_seconds": 90.5,
+    "entities": [
+      "host:edge-host",
+      "ip:192.0.2.9"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "ip:192.0.2.9",
+        "connects_to"
+      ]
+    ],
+    "features": [
+      0.25,
+      0.41999998688697815,
+      0.37636157870292664,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-00000000000b",
+      "timestamp": "20260301T001000",
+      "source": "kernel_ebpf",
+      "severity": "IMPOSSIBLE",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "impossible_state",
+        "correlated_event_ids": [],
+        "description": "x",
+        "kill_chain_stage": "y"
+      }
+    },
+    "delta_seconds": 29.5,
+    "entities": [
+      "host:edge-host"
+    ],
+    "edges": [],
+    "features": [
+      1.0,
+      1.0,
+      0.28481054306030273,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "event": {
+      "id": "e1000000-0000-4000-8000-00000000000c",
+      "timestamp": "2026-03-01T11",
+      "source": "hardware_nvme",
+      "severity": "HIGH",
+      "metadata": {
+        "host": "edge-host"
+      },
+      "kind": {
+        "type": "nvme_latency_anomaly",
+        "device": "nvme0n1",
+        "baseline_us": 120,
+        "observed_us": 500,
+        "deviation_pct": 316.0,
+        "concurrent_exfil": false
+      }
+    },
+    "delta_seconds": 39000.0,
+    "entities": [
+      "host:edge-host",
+      "device:edge-host:nvme0n1"
+    ],
+    "edges": [
+      [
+        "host:edge-host",
+        "device:edge-host:nvme0n1",
+        "contains"
+      ]
+    ],
+    "features": [
+      0.6499999761581421,
+      0.5199999809265137,
+      0.8809452056884766,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  }
+]

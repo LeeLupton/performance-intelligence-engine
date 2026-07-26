@@ -1,0 +1,445 @@
+{
+  "format": "idr-intelligence-onnx-v1",
+  "engine_version": "0.1.0",
+  "model_version": "fixture-v1",
+  "created_at": "2026-07-26T06:22:36.393585+00:00",
+  "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
+  "model": {
+    "feature_dim": 22,
+    "hidden_dim": 24,
+    "state_dim": 6,
+    "time_mode": "time_aware",
+    "pooling": "attention",
+    "use_gnn": true,
+    "decay_half_life": 3600.0
+  },
+  "calibration": {
+    "temperature": 1.350000023841858,
+    "bias": -0.18000000715255737,
+    "label": "affine:scale=0.740741,bias=-0.180000"
+  },
+  "features": {
+    "names": [
+      "severity",
+      "kind_prior",
+      "delta_seconds_log",
+      "has_process",
+      "unsigned_process",
+      "has_ip",
+      "has_hash",
+      "has_domain",
+      "has_asn_or_prefix",
+      "has_hardware",
+      "concurrent_exfil",
+      "production_bgp_anomaly",
+      "source_kernel",
+      "source_network",
+      "source_hardware",
+      "source_correlation",
+      "kind_hash_0",
+      "kind_hash_1",
+      "kind_hash_2",
+      "kind_hash_3",
+      "has_user",
+      "has_identity_pivot"
+    ],
+    "severity_weight": {
+      "INFO": 0.05,
+      "WARNING": 0.25,
+      "HIGH": 0.65,
+      "CRITICAL": 0.85,
+      "IMPOSSIBLE": 1.0
+    },
+    "severity_default": 0.15,
+    "kind_prior": {
+      "socket_lineage": 0.12,
+      "suspicious_beacon": 0.72,
+      "physics_anomaly": 0.68,
+      "octet_reversal_detected": 0.74,
+      "ntp_time_shift": 0.42,
+      "hsts_time_manipulation": 0.78,
+      "nvme_latency_anomaly": 0.52,
+      "mac_flapping": 0.64,
+      "rtc_clock_divergence": 0.38,
+      "triage_classification": 0.6,
+      "bgp_anomaly": 0.48,
+      "impossible_state": 1.0
+    },
+    "kind_prior_default": 0.18,
+    "delta_log_divisor": 12.0
+  },
+  "attack": {
+    "tactic_order": [
+      "initial-access",
+      "execution",
+      "persistence",
+      "privilege-escalation",
+      "defense-evasion",
+      "credential-access",
+      "discovery",
+      "lateral-movement",
+      "collection",
+      "command-and-control",
+      "exfiltration",
+      "impact"
+    ],
+    "kind_to_attack": {
+      "socket_lineage": {
+        "tactic": "execution",
+        "technique": "T1059"
+      },
+      "suspicious_beacon": {
+        "tactic": "command-and-control",
+        "technique": "T1071"
+      },
+      "bgp_anomaly": {
+        "tactic": "collection",
+        "technique": "T1557"
+      },
+      "ntp_time_shift": {
+        "tactic": "defense-evasion",
+        "technique": "T1562"
+      },
+      "hsts_time_manipulation": {
+        "tactic": "credential-access",
+        "technique": "T1557"
+      },
+      "nvme_latency_anomaly": {
+        "tactic": "exfiltration",
+        "technique": "T1041"
+      },
+      "mac_flapping": {
+        "tactic": "collection",
+        "technique": "T1557.002"
+      },
+      "rtc_clock_divergence": {
+        "tactic": "defense-evasion",
+        "technique": "T1562"
+      },
+      "physics_anomaly": {
+        "tactic": "impact",
+        "technique": "T1495"
+      },
+      "octet_reversal_detected": {
+        "tactic": "defense-evasion",
+        "technique": "T1027"
+      },
+      "impossible_state": {
+        "tactic": "impact",
+        "technique": "T1499"
+      }
+    }
+  },
+  "scoring": {
+    "top_k_default": 5,
+    "evidence_limit": 64
+  },
+  "feature_stats": {
+    "bin_edges": [
+      0.0,
+      0.1,
+      0.2,
+      0.30000000000000004,
+      0.4,
+      0.5,
+      0.6000000000000001,
+      0.7000000000000001,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "histograms": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        16,
+        0,
+        8,
+        0
+      ],
+      [
+        0,
+        4,
+        0,
+        0,
+        8,
+        4,
+        0,
+        8,
+        0,
+        0
+      ],
+      [
+        1,
+        0,
+        0,
+        12,
+        8,
+        0,
+        0,
+        3,
+        0,
+        0
+      ],
+      [
+        16,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        20
+      ],
+      [
+        16,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        16,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        16,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8
+      ],
+      [
+        16,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        12
+      ],
+      [
+        24,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        20,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4
+      ],
+      [
+        16,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8
+      ],
+      [
+        24,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        24,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  "graphs": {
+    "step": {
+      "file": "step.onnx",
+      "inputs": [
+        "x_t",
+        "state",
+        "output",
+        "delta_t"
+      ],
+      "outputs": [
+        "state_out",
+        "output_out"
+      ]
+    },
+    "head": {
+      "file": "head.onnx",
+      "inputs": [
+        "outputs",
+        "adjacency"
+      ],
+      "outputs": [
+        "graph_logit",
+        "node_logits"
+      ]
+    }
+  },
+  "opset": 18
+}

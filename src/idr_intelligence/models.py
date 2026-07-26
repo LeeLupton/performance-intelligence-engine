@@ -121,9 +121,15 @@ class ModelOutput:
 
 
 def _masked_max(values: torch.Tensor, keep: torch.Tensor, dim: int) -> torch.Tensor:
-    """Max over `dim` ignoring masked entries; rows with nothing kept become zeros."""
+    """Max over `dim` ignoring masked entries; rows with nothing kept become zeros.
+
+    The all-masked sentinel is compared against -inf directly rather than via
+    isfinite: inputs are finite, so -inf is the only non-finite value reachable,
+    and isfinite exported an IsInf op the tract ONNX runtime cannot evaluate
+    (same class of fix as GatedAttentionPool's isnan guard).
+    """
     maximum = values.masked_fill(keep == 0, float("-inf")).max(dim=dim).values
-    return torch.where(torch.isfinite(maximum), maximum, torch.zeros_like(maximum))
+    return torch.where(maximum == float("-inf"), torch.zeros_like(maximum), maximum)
 
 
 class GatedAttentionPool(nn.Module):
@@ -142,7 +148,10 @@ class GatedAttentionPool(nn.Module):
     def forward(self, nodes: torch.Tensor, active: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         scores = self.score(torch.tanh(self.value(nodes)) * torch.sigmoid(self.gate(nodes))).squeeze(-1)
         weights = torch.softmax(scores.masked_fill(active.squeeze(-1) == 0, float("-inf")), dim=1)
-        weights = torch.nan_to_num(weights, nan=0.0)
+        # NaN (a fully-masked row) -> 0. Same semantics as nan_to_num(nan=0.0):
+        # softmax output is bounded [0,1] so the inf branches were dead code, and
+        # the IsInf op they exported is unsupported by the tract ONNX runtime.
+        weights = torch.where(torch.isnan(weights), torch.zeros_like(weights), weights)
         pooled = (weights.unsqueeze(-1) * nodes).sum(dim=1)
         return pooled, scores
 
@@ -161,6 +170,10 @@ class CampaignModel(nn.Module):
             raise ValueError(f"unknown pooling mode: {pooling}")
         if time_mode not in ("global", "per_entity", "time_aware"):
             raise ValueError(f"unknown time_mode: {time_mode}")
+        if decay_half_life is not None and decay_half_life <= 0:
+            # Matches build_temporal_graph's check; a zero half-life makes the
+            # streaming decay weight 0.5**(age/0) divide by zero at scoring time.
+            raise ValueError("decay_half_life must be positive or None")
         self.feature_dim = feature_dim
         self.hidden_dim = hidden_dim
         self.state_dim = state_dim
