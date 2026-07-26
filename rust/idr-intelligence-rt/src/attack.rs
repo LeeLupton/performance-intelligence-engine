@@ -13,6 +13,7 @@ use crate::manifest::AttackSpec;
 pub struct Stage {
     pub tactic: String,
     pub technique: String,
+    pub technique_name: Option<String>,
     pub kind_type: String,
     pub first_event_id: String,
 }
@@ -26,6 +27,7 @@ pub fn observe(stages: &mut Vec<Stage>, spec: &AttackSpec, kind_type: &str, even
         stages.push(Stage {
             tactic: mapping.tactic.clone(),
             technique: mapping.technique.clone(),
+            technique_name: mapping.technique_name.clone(),
             kind_type: kind_type.to_string(),
             first_event_id: event_id.to_string(),
         });

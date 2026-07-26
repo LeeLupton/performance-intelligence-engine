@@ -78,6 +78,25 @@ def validate_mapping_against_reference() -> list[str]:
     return problems
 
 
+def stage_record(kind_type: str, first_event_id: str) -> dict[str, Any] | None:
+    """The ATT&CK stage a mapped kind contributes, enriched with the MITRE name.
+
+    Single source of truth for the stage dict, shared by the batch, streaming,
+    and ONNX-runner paths so the finding's `observed_attack_stages` shape can
+    never drift between them. Returns None for unmapped kinds.
+    """
+    mapping = KIND_TO_ATTACK.get(kind_type)
+    if mapping is None:
+        return None
+    return {
+        "tactic": mapping["tactic"],
+        "technique": mapping["technique"],
+        "technique_name": technique_name(mapping["technique"]),
+        "kind_type": kind_type,
+        "first_event_id": first_event_id,
+    }
+
+
 def observed_attack_stages(events: list[IdrEvent]) -> tuple[dict[str, Any], ...]:
     """Timestamp-ordered attack-stage observations with evidence, one per kind.
 
@@ -89,15 +108,11 @@ def observed_attack_stages(events: list[IdrEvent]) -> tuple[dict[str, Any], ...]
     """
     stages: dict[str, dict[str, Any]] = {}
     for event in sorted(events, key=lambda item: (item.timestamp, item.id)):
-        mapping = KIND_TO_ATTACK.get(event.kind_type)
-        if mapping is None or event.kind_type in stages:
+        if event.kind_type in stages:
             continue
-        stages[event.kind_type] = {
-            "tactic": mapping["tactic"],
-            "technique": mapping["technique"],
-            "kind_type": event.kind_type,
-            "first_event_id": event.id,
-        }
+        record = stage_record(event.kind_type, event.id)
+        if record is not None:
+            stages[event.kind_type] = record
     return tuple(stages.values())
 
 

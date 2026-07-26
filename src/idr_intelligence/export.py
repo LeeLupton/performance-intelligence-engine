@@ -22,7 +22,13 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attack import KIND_TO_ATTACK, TACTIC_ORDER, next_stage_from_stages
+from .attack import (
+    KIND_TO_ATTACK,
+    TACTIC_ORDER,
+    next_stage_from_stages,
+    stage_record,
+    technique_name,
+)
 from .bounded_graph import EvictionRecord, GraphBudget
 from .config import DEFAULT_CONFIG, ENGINE_VERSION
 from .evidence import apply_suppressions
@@ -163,7 +169,13 @@ def export_streaming_bundle(model: CampaignModel, out_dir: str | Path, model_ver
             "kind_prior_default": KIND_PRIOR_DEFAULT,
             "delta_log_divisor": DELTA_LOG_DIVISOR,
         },
-        "attack": {"tactic_order": list(TACTIC_ORDER), "kind_to_attack": dict(KIND_TO_ATTACK)},
+        "attack": {
+            "tactic_order": list(TACTIC_ORDER),
+            "kind_to_attack": {
+                kind: {**mapping, "technique_name": technique_name(mapping["technique"])}
+                for kind, mapping in KIND_TO_ATTACK.items()
+            },
+        },
         "scoring": {"top_k_default": DEFAULT_CONFIG.scoring.top_k, "evidence_limit": EVIDENCE_LIMIT},
         "feature_stats": model.feature_stats,
         "graphs": {
@@ -245,14 +257,10 @@ class OnnxStreamScorer:
         self._previous_time = event.timestamp
         if self._first_event is None or (event.timestamp, event.id) < self._first_event:
             self._first_event = (event.timestamp, event.id)
-        mapping = KIND_TO_ATTACK.get(event.kind_type)
-        if mapping is not None and event.kind_type not in self._stages:
-            self._stages[event.kind_type] = {
-                "tactic": mapping["tactic"],
-                "technique": mapping["technique"],
-                "kind_type": event.kind_type,
-                "first_event_id": event.id,
-            }
+        if event.kind_type not in self._stages:
+            record = stage_record(event.kind_type, event.id)
+            if record is not None:
+                self._stages[event.kind_type] = record
         hidden = self.manifest["model"]["hidden_dim"]
         state_dim = self.manifest["model"]["state_dim"]
         for entity in projection.entities:

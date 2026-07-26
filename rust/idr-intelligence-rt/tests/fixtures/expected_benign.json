@@ -8,36 +8,42 @@
     {
       "tactic": "execution",
       "technique": "T1059",
+      "technique_name": "Command and Scripting Interpreter",
       "kind_type": "socket_lineage",
       "first_event_id": "73387f2f-83e1-6389-a120-957e0af79826"
     },
     {
       "tactic": "collection",
       "technique": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
       "kind_type": "bgp_anomaly",
       "first_event_id": "c50bc3e2-66c7-85ad-c6ca-95c45bde471b"
     },
     {
       "tactic": "command-and-control",
       "technique": "T1071",
+      "technique_name": "Application Layer Protocol",
       "kind_type": "suspicious_beacon",
       "first_event_id": "9671cecb-af2f-2546-9b61-0150917b986d"
     },
     {
       "tactic": "defense-evasion",
       "technique": "T1562",
+      "technique_name": "Impair Defenses",
       "kind_type": "ntp_time_shift",
       "first_event_id": "c5bbf5ec-b2d1-f8ea-5e67-170232d2edc8"
     },
     {
       "tactic": "credential-access",
       "technique": "T1557",
+      "technique_name": "Adversary-in-the-Middle",
       "kind_type": "hsts_time_manipulation",
       "first_event_id": "51b008c9-13ff-cc80-9413-90865a2bd5b2"
     },
     {
       "tactic": "exfiltration",
       "technique": "T1041",
+      "technique_name": "Exfiltration Over C2 Channel",
       "kind_type": "nvme_latency_anomaly",
       "first_event_id": "7a130689-b5de-4073-32b8-2bea5fa5d839"
     }
@@ -77,7 +83,7 @@
   },
   "engine_version": "0.1.0",
   "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
-  "scored_at": "2026-07-26T10:52:38.558392+00:00",
+  "scored_at": "2026-07-26T10:58:41.181961+00:00",
   "feature_drift": {
     "psi_max": 4.320524,
     "psi_mean": 0.394633,

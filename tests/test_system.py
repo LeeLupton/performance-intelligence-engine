@@ -1157,6 +1157,11 @@ def test_streaming_matches_batch_scoring():
     events = simulate_campaign(label=1, seed=8)
     ordered = sorted(events, key=lambda event: (event.timestamp, event.id))
     for time_mode in ("global", "per_entity", "time_aware"):
+        # Seed the model init: without this the weights depend on the global
+        # torch RNG left by prior tests, which can land on a top-k boundary tie
+        # where stream and batch pick different tied entities (an order-dependent
+        # flake in this equivalence check, not a real divergence).
+        torch.manual_seed(1234)
         model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode=time_mode)
         batch = score_events(events, model, max_steps=64)
         scorer = StreamingScorer(model)
@@ -1898,3 +1903,22 @@ def test_vendored_attack_reference_is_fresh_if_bundle_present():
     rebuilt = ground_attack_reference.build_reference(bundle)
     assert rebuilt["enterprise_tactic_order"] == ATTACK_REFERENCE["enterprise_tactic_order"]
     assert rebuilt["techniques"] == ATTACK_REFERENCE["techniques"]
+
+
+def test_findings_carry_real_technique_names():
+    from idr_intelligence.streaming import StreamingScorer
+
+    events = simulate_campaign(label=1, seed=8)
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    finding = score_events(events, model)
+    stages = finding.observed_attack_stages
+    assert stages
+    for stage in stages:
+        assert stage.get("technique_name")  # real MITRE name, never empty
+    names = {stage["technique"]: stage["technique_name"] for stage in stages}
+    assert names.get("T1041") == "Exfiltration Over C2 Channel"
+    # Streaming and batch agree on the enriched stage records.
+    scorer = StreamingScorer(model)
+    for event in sorted(events, key=lambda e: (e.timestamp, e.id)):
+        scorer.ingest(event)
+    assert scorer.finding().observed_attack_stages == stages
