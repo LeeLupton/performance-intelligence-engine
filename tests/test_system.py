@@ -1699,3 +1699,152 @@ def test_cli_missing_model_logs_operational_error(tmp_path, monkeypatch, capsys)
         cli.main()
     records = [json.loads(line) for line in capsys.readouterr().err.splitlines() if line.strip()]
     assert any(record["event"] == "model_load_failed" and record["level"] == "ERROR" for record in records)
+
+
+def _labeled_windows(count, scenario="v0_easy"):
+    from idr_intelligence.schema import LabeledWindow
+
+    windows = []
+    for index in range(count):
+        label = index % 2
+        events = simulate_campaign(label, seed=index, scenario=scenario)
+        windows.append(LabeledWindow(window_id=f"w{index:03d}", label=label, events=tuple(events)))
+    return windows
+
+
+def _fit_model_on(windows, time_mode="global", epochs=6):
+    from idr_intelligence.training import (
+        HIDDEN_DIM,
+        STATE_DIM,
+        _fit,
+        chronological_split,
+        set_seed,
+        windows_to_batch,
+    )
+
+    set_seed(7)
+    train, val, _ = chronological_split(windows_to_batch(windows, time_mode=time_mode))
+    model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, time_mode=time_mode)
+    _fit(model, train, val, epochs=epochs)
+    return model
+
+
+def test_validate_gate_produces_go_on_relaxed_gates_but_not_binding_on_synthetic():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(64)
+    model = _fit_model_on(windows)
+    # Relax ECE (tiny synthetic separable data is overconfident); this exercises
+    # the go path. Provenance is synthetic, so the verdict must stay non-binding.
+    report = validate_model(model, windows, target_fpr=0.05, holdout=0.4, provenance="synthetic-standin", gates={"max_ece": 0.6})
+    assert report["verdict"] == "go"
+    assert report["binding"] is False  # synthetic provenance can never bind
+    assert "WIRING verdict" in report["verdict_note"]
+    assert report["operating_threshold"]["tau"] is not None
+    assert report["drift_baseline"]["sample_count"] > 0
+    assert model.feature_stats is not None  # real drift baseline installed on the model
+    assert all(gate["value"] is not None for gate in report["gates"])
+
+
+def test_validate_binding_requires_attested_real_provenance():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(64)
+    model = _fit_model_on(windows)
+    report = validate_model(model, windows, target_fpr=0.05, holdout=0.4, provenance="soc-incidents-2026Q2", gates={"max_ece": 0.6})
+    assert report["verdict"] == "go"
+    assert report["binding"] is True
+    assert "shadow/advisory deployment" in report["verdict_note"]
+
+
+def test_validate_no_go_when_a_gate_fails():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(64)
+    model = _fit_model_on(windows)
+    # Default ECE gate (0.10) fails on the overconfident synthetic model.
+    report = validate_model(model, windows, target_fpr=0.05, holdout=0.4, provenance="soc-incidents-2026Q2")
+    assert report["verdict"] == "no-go"
+    assert report["binding"] is False  # a failed gate can never bind, even on real data
+    assert any(gate["name"] == "ece" and not gate["pass"] for gate in report["gates"])
+
+
+def test_validate_rejects_single_class_segment():
+    from idr_intelligence.schema import LabeledWindow
+    from idr_intelligence.validation import validate_model
+
+    # Every window malicious -> the test segment is single-class.
+    windows = [
+        LabeledWindow(window_id=f"w{i}", label=1, events=tuple(simulate_campaign(1, seed=i)))
+        for i in range(8)
+    ]
+    model = _fit_model_on(_labeled_windows(40))
+    with pytest.raises(ValueError, match="single-class"):
+        validate_model(model, windows, holdout=0.5)
+
+
+def test_validate_rejects_unknown_gate():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(40)
+    model = _fit_model_on(windows)
+    with pytest.raises(ValueError, match="unknown gate"):
+        validate_model(model, windows, gates={"max_eces": 0.5})
+
+
+def test_cli_validate_roundtrip_writes_card_and_recalibrated_checkpoint(tmp_path, monkeypatch, capsys):
+    windows = _labeled_windows(64)
+    data_path = tmp_path / "campaigns.labeled.ndjson"
+    data_path.write_text("\n".join(
+        json.dumps({
+            "window_id": window.window_id, "label": window.label,
+            "events": [
+                {"id": e.id, "timestamp": e.timestamp.isoformat(), "source": e.source, "severity": e.severity, "kind": e.kind, "metadata": e.metadata}
+                for e in window.events
+            ],
+        })
+        for window in windows
+    ) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(_fit_model_on(windows), weights)
+    card = tmp_path / "MODEL_CARD.md"
+    out_weights = tmp_path / "validated.pt"
+    monkeypatch.setattr("sys.argv", [
+        "idr-intelligence", "validate", "--data", str(data_path), "--weights", str(weights),
+        "--target-fpr", "0.05", "--holdout", "0.4", "--data-provenance", "soc-incidents-2026Q2",
+        "--gate", "max_ece=0.6", "--model-card", str(card), "--out-weights", str(out_weights),
+    ])
+    cli.main()  # verdict go -> exit 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["verdict"] == "go"
+    assert report["binding"] is True
+    assert report["model_card"] == str(card)
+    assert card.exists() and "Model Card" in card.read_text()
+    assert out_weights.exists()
+    # The recalibrated checkpoint carries the real drift baseline.
+    reloaded = load_campaign_model(out_weights)
+    assert reloaded.feature_stats is not None
+
+
+def test_cli_validate_exits_nonzero_on_no_go(tmp_path, monkeypatch):
+    windows = _labeled_windows(64)
+    data_path = tmp_path / "campaigns.labeled.ndjson"
+    data_path.write_text("\n".join(
+        json.dumps({
+            "window_id": window.window_id, "label": window.label,
+            "events": [
+                {"id": e.id, "timestamp": e.timestamp.isoformat(), "source": e.source, "severity": e.severity, "kind": e.kind, "metadata": e.metadata}
+                for e in window.events
+            ],
+        })
+        for window in windows
+    ) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(_fit_model_on(windows), weights)
+    monkeypatch.setattr("sys.argv", [
+        "idr-intelligence", "validate", "--data", str(data_path), "--weights", str(weights),
+        "--target-fpr", "0.05", "--holdout", "0.4",  # default ECE gate fails -> no-go
+    ])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2

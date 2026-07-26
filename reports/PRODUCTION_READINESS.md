@@ -104,12 +104,18 @@ Ordered by dependency. Owners noted where the work is not this repo's.
 1. **[repo] Deployment-agnostic hardening** — packaging (Dockerfile + pinned
    build), a model card per checkpoint, runtime config validation, Rust-side
    structured logging to match Python. *No external dependency.*
-2. **[repo] Real-data validation gate** — a single `validate` command: take
-   real `LabeledWindow` data, re-fit calibration on a real temporal holdout,
-   select an operating threshold at a target FPR, snapshot a real drift
-   baseline, and emit a go/no-go report + model card. Buildable now against the
-   simulator as a labelled stand-in; it produces a real verdict the moment real
-   data is dropped in. *No external dependency to build; real data to run for real.*
+2. **[repo] Real-data validation gate — ✅ BUILT** (`idr-intelligence validate`,
+   `validation.py`). Takes real `LabeledWindow` data, re-fits calibration on an
+   earlier time segment, selects an operating threshold at a target FPR, snapshots
+   a real drift baseline, verifies metrics + the *realized* FPR on a strictly-later
+   untouched segment, and turns configurable gates into a go/no-go verdict, a model
+   card, and (only on `go`) a recalibrated checkpoint. Exits non-zero on no-go so a
+   deploy pipeline halts. Honesty is structural: the operator must attest data
+   provenance, and a verdict is only `binding` when that attestation names real
+   data — running the gate on the simulator produces a full report whose verdict is
+   explicitly a non-binding wiring check. **This converts "needs real data" into a
+   one-command gate: drop in real labeled campaigns and it renders a defensible
+   verdict.**
 3. **[Lee + org] Supply real labeled campaigns.** The wall. Nothing downstream
    is defensible without it.
 4. **[Lee] Choose the runtime shape** and build it (this repo), wiring findings

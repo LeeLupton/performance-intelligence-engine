@@ -11,7 +11,7 @@ from typing import Any
 
 from .benchmark import run_benchmark
 from .campaigns import CampaignRegistry
-from .models import CampaignModel, load_campaign_model
+from .models import CampaignModel, load_campaign_model, save_checkpoint
 from .observability import LEVELS, configure_logging, get_logger, log_event
 from .pipeline import IntelligenceFinding, score_events
 from .registry import feature_schema_hash
@@ -64,6 +64,16 @@ def main() -> None:
     export.add_argument("--out", default="artifacts/export", help="output directory for step.onnx, head.onnx, manifest.json")
     export.add_argument("--model-version", default=None, help="model_version recorded in the manifest; defaults to the weights filename")
 
+    validate = subparsers.add_parser("validate", parents=[common], help="real-data go/no-go gate: recalibrate + pick a threshold on a temporal holdout, snapshot real drift, emit a report + model card")
+    validate.add_argument("--data", required=True, help="directory or file of *.labeled.ndjson real campaign windows")
+    validate.add_argument("--weights", default="artifacts/hybrid_model.pt")
+    validate.add_argument("--target-fpr", type=float, default=0.01, help="tolerated false-positive rate the operating threshold is chosen for")
+    validate.add_argument("--holdout", type=float, default=0.5, help="fraction (latest by time) held out as the untouched test segment")
+    validate.add_argument("--data-provenance", default="unspecified", help="operator attestation of the data source; the verdict is BINDING only when this names real data (not synthetic/sim/standin/demo/test)")
+    validate.add_argument("--gate", action="append", default=None, metavar="KEY=VALUE", help="override a gate threshold, e.g. --gate max_ece=0.05 (repeatable); these are the operator's risk appetite")
+    validate.add_argument("--out-weights", default=None, help="write the recalibrated checkpoint (real calibration + real drift baseline) here")
+    validate.add_argument("--model-card", default=None, help="write a model card markdown here")
+
     bench = subparsers.add_parser("benchmark", parents=[common], help="run a frozen benchmark manifest; exit 1 on floor violations")
     bench.add_argument("--manifest", default="benchmarks/v1.json")
 
@@ -109,6 +119,32 @@ def main() -> None:
         print(json.dumps(time_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
     elif args.command == "decay-ablation":
         print(json.dumps(decay_ablation(scenario=args.scenario, samples=args.samples, epochs=args.epochs), indent=2))
+    elif args.command == "validate":
+        from .dataio import load_labeled_windows
+        from .validation import render_model_card, validate_model
+
+        model = _load_model(args.weights, log)
+        windows = load_labeled_windows(args.data)
+        gate_overrides = _parse_gate_overrides(args.gate)
+        report = validate_model(model, windows, target_fpr=args.target_fpr, holdout=args.holdout, provenance=args.data_provenance, gates=gate_overrides)
+        log_event(
+            log, "validation_complete", verdict=report["verdict"], binding=report["binding"],
+            windows=report["data"]["windows"], failed_gates=[gate["name"] for gate in report["gates"] if not gate["pass"]],
+        )
+        if args.model_card:
+            Path(args.model_card).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.model_card).write_text(render_model_card(report))
+            report["model_card"] = args.model_card
+        # A safety gate only emits a deployable artifact when it passes.
+        if args.out_weights and report["verdict"] == "go":
+            save_checkpoint(model, args.out_weights)
+            report["recalibrated_checkpoint"] = args.out_weights
+        elif args.out_weights:
+            report["recalibrated_checkpoint"] = None
+            report["out_weights_withheld"] = "verdict is no-go; the recalibrated checkpoint was not written"
+        print(json.dumps(report, indent=2))
+        if report["verdict"] != "go":
+            raise SystemExit(2)
     elif args.command == "export":
         from .export import export_streaming_bundle
 
@@ -194,6 +230,22 @@ def _log_finding(log: Any, finding: IntelligenceFinding, **fields: Any) -> None:
 
 def _elapsed_ms(started: float) -> float:
     return round((time.perf_counter() - started) * 1000.0, 3)
+
+
+def _parse_gate_overrides(raw: list[str] | None) -> dict[str, float] | None:
+    """Parse repeated --gate KEY=VALUE flags into a float override map."""
+    if not raw:
+        return None
+    overrides: dict[str, float] = {}
+    for item in raw:
+        key, sep, value = item.partition("=")
+        if not sep:
+            raise SystemExit(f"--gate expects KEY=VALUE, got {item!r}")
+        try:
+            overrides[key.strip()] = float(value)
+        except ValueError as exc:
+            raise SystemExit(f"--gate {key}: {value!r} is not a number") from exc
+    return overrides
 
 
 def _read_events(path: str, log: Any = None) -> list[IdrEvent]:
