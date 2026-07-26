@@ -14,8 +14,11 @@ jobs:
     steps:
       - name: Install Arch Linux dependencies
         run: |
+          # gcc provides /usr/bin/cc: the Rust build scripts need a linker, and
+          # rustup (unlike the old `rust` package) does not pull one in.
           pacman -Syu --noconfirm \
             git \
+            gcc \
             python \
             python-pip \
             python-setuptools \
@@ -65,8 +68,6 @@ jobs:
       - name: Run benchmark floors
         run: cd "$(mktemp -d)" && "$GITHUB_WORKSPACE/.venv/bin/python" -m idr_intelligence.cli benchmark --manifest "$GITHUB_WORKSPACE/benchmarks/v1.json"
 
-      # rust/idr-common-parity is machine-local (path-dep on the idr-main
-      # working tree) and deliberately not built here.
       # The toolchain is pinned by rust-toolchain.toml (rustup auto-installs
       # it), so clippy/rustfmt cannot drift with the Arch container.
       - name: Install pinned Rust toolchain
@@ -80,3 +81,10 @@ jobs:
 
       - name: Run Rust tests
         run: cargo test --manifest-path rust/idr-intelligence-rt/Cargo.toml
+
+      # Wire-compatibility against the real idr_common types (vendored in-repo
+      # at rust/idr-common). Not clippy-gated: idr-common is vendored verbatim
+      # from idr-main and kept byte-identical for easy re-sync, so it is not
+      # held to this repo's lint bar.
+      - name: Run idr-common wire-parity tests
+        run: cargo test --manifest-path rust/idr-common-parity/Cargo.toml

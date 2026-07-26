@@ -38,10 +38,14 @@ The simulator uses event families already present in `idr-main` (`socket_lineage
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,export]'
 pytest
 idr-intelligence demo --samples 80 --epochs 3 --output reports/demo.json
 ```
+
+`make gates` runs every CI check locally (pytest, ruff, mypy, benchmark floors,
+and the Rust bridge's fmt/clippy/test). `make docker` / `make docker-rt` build
+the Python engine and the minimal Rust serving images.
 
 `demo` prints the ablation benchmark and an evidence-linked `IntelligenceFinding`. Other subcommands:
 
@@ -51,6 +55,9 @@ idr-intelligence score events.ndjson --suppress 'ip:' --suppress host:known-scan
 idr-intelligence score events.ndjson --registry campaigns.json               # stable campaign ids across windows (registry updated in place)
 idr-intelligence stream events.ndjson --max-nodes 64                         # event-at-a-time scoring over carried S6 state (default bound 4096; 0 = unbounded)
 idr-intelligence export --weights artifacts/hybrid_model.pt --out artifacts/export  # ONNX bundle for the Rust bridge
+idr-intelligence score events.ndjson --log-level info                        # JSON-lines operational logs to stderr (model provenance, timing, drift); stdout finding unchanged
+
+idr-intelligence validate --data campaigns/ --data-provenance soc-2026Q2 --model-card CARD.md  # real-data go/no-go gate: recalibrate + pick a threshold on a temporal holdout, emit a model card
 
 idr-intelligence benchmark --manifest benchmarks/v1.json                    # frozen regression floors; exit 1 on violation (runs in CI)
 idr-intelligence ablation --folds 3 --replicates 3                          # rolling-origin CV with a statistical best-model verdict
@@ -90,7 +97,9 @@ src/idr_intelligence/features.py    entity extraction (incl. identity), typed ed
 src/idr_intelligence/graph.py       temporal graph: per-entity time, decayed edges, node budget
 src/idr_intelligence/bounded_graph.py  GraphBudget + audited eviction
 src/idr_intelligence/models.py      S6, GNN, gated-attention pooling, checkpoints
-src/idr_intelligence/attack.py      deterministic kind→ATT&CK mapping + next-stage
+src/idr_intelligence/attack.py      deterministic kind→ATT&CK mapping + next-stage, grounded in real MITRE ATT&CK
+src/idr_intelligence/data/attack_reference.json  canonical tactic order + technique catalog distilled from MITRE ATT&CK STIX
+scripts/ground_attack_reference.py  regenerate the ATT&CK reference from a MITRE Enterprise STIX bundle
 src/idr_intelligence/simulator.py   11 scenario families with stage-level ground truth
 src/idr_intelligence/training.py    ablation, calibration, scenario gen, rolling-origin CV
 src/idr_intelligence/benchmark.py   frozen-manifest regression floors (CI gate)
@@ -102,10 +111,14 @@ src/idr_intelligence/streaming.py   event-at-a-time scoring over carried S6 stat
 src/idr_intelligence/export.py      ONNX bundle export + torch-free reference runner (serving contract)
 src/idr_intelligence/cli.py         demo · score · stream · export · benchmark · ablation · time/decay-ablation
 rust/idr-intelligence-rt/           Rust serving bridge on tract (golden-pinned to StreamingScorer)
-rust/idr-common-parity/             machine-local wire parity vs the real idr_common crate (not in CI)
+rust/idr-common/                    vendored idr_common crate from idr-main (the IdrEvent wire types; see its VENDOR.md)
+rust/idr-common-parity/             wire parity vs the real idr_common types — builds in CI against the vendored crate
 benchmarks/v1.json                  frozen benchmark manifest with regression floors
 docs/ARCHITECTURE.md                integration design + Rust EventKind contract
+src/idr_intelligence/observability.py  opt-in JSON-lines stderr logging (model provenance, timing, drift, evictions)
+src/idr_intelligence/validation.py  real-data go/no-go gate: recalibrate + threshold on a temporal holdout, drift baseline, model card
 reports/AUDIT.md                    model-risk audit + verified findings
+reports/PRODUCTION_READINESS.md     software-vs-detector readiness assessment + staged go-live path
 state.json                          canonical engineering state record (ADR log, evidence)
 ```
 

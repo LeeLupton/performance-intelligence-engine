@@ -21,6 +21,7 @@ pub mod attack;
 pub mod event;
 pub mod features;
 pub mod finding;
+pub mod log;
 pub mod manifest;
 pub mod model;
 pub mod scorer;

@@ -59,6 +59,8 @@ pub struct AttackSpec {
 pub struct TacticTechnique {
     pub tactic: String,
     pub technique: String,
+    #[serde(default)]
+    pub technique_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

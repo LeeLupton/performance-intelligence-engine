@@ -117,6 +117,22 @@
       {
         "module": "rust/idr-common-parity/tests/wire.rs",
         "role": "machine-local wire parity: bridge parses idr_common-serialized events, goldens deserialize into real idr_common::IdrEvent (not in CI; path-dep on idr-main tree)"
+      },
+      {
+        "module": "src/idr_intelligence/observability.py",
+        "role": "opt-in structured stderr logging (JSON lines): model provenance on load, per-run counts/timing, finding summaries, drift flags, evictions, rejections; silent by default so the stdout finding contract and determinism are untouched"
+      },
+      {
+        "module": "src/idr_intelligence/validation.py",
+        "role": "real-data go/no-go validation gate: recalibrate + select an operating threshold at a target FPR on an earlier time segment, snapshot a real drift baseline, verify metrics + realized FPR on a strictly-later untouched segment, turn configurable gates into a verdict + model card; verdict is BINDING only on operator-attested real provenance (synthetic runs are explicit wiring checks)"
+      },
+      {
+        "module": "src/idr_intelligence/attack.py",
+        "role": "deterministic kind->ATT&CK mapping + next-stage prediction, now grounded in real MITRE ATT&CK: TACTIC_ORDER derived from the canonical enterprise matrix (14 tactics), KIND_TO_ATTACK validated technique-and-tactic-consistent against the real dataset by test, technique_name() enrichment"
+      },
+      {
+        "module": "rust/idr-common/src/events.rs",
+        "role": "vendored idr_common::IdrEvent wire types (verbatim from idr-main/crates/idr-common) so the bridge + wire-parity crate build against the real schema in CI, not just machine-locally; GPL-2.0-only, see rust/idr-common/VENDOR.md"
       }
     ],
     "interfaces": [
@@ -154,6 +170,11 @@
         "name": "OnnxExportBundle",
         "version": "v1 (format idr-intelligence-onnx-v1)",
         "contract": "step.onnx (x_t[1,F], state[1,H,S], output[1,H], delta_t[1] iff time_aware -> state_out, output_out) + head.onnx (outputs[N,H], adjacency[N,N] -> graph_logit[1], node_logits[N], N dynamic) + manifest.json carrying engine/model versions, feature_schema_hash, dims/time_mode/decay, calibration (temperature/bias/label), severity_weight + kind_prior tables with defaults, delta_log_divisor, ATT&CK tactic_order + kind_to_attack, top_k/evidence_limit, optional feature_stats, and per-graph IO signatures. Consumers hardcode nothing; the Python exporter is the single source of truth"
+      },
+      {
+        "name": "ValidationReport",
+        "version": "v1 (report idr-intelligence-validation-v1)",
+        "contract": "validate_model(model, windows, target_fpr, holdout, provenance, gates) -> report dict: verdict go|no-go, binding bool (real-provenance AND passed), operating_threshold {tau, dev_fpr, dev_tpr}, calibration {label,scale,bias}, data {dev/test window+positive counts, holdout}, test_metrics (roc_auc/pr_auc/brier/ece/recall@fpr), test_confusion_at_threshold (realized fpr/tpr/precision), drift_baseline, gates[] each {name,value,op,threshold,pass}. Mutates the model to carry real calibration + real drift baseline; CLI writes the recalibrated checkpoint ONLY on go and exits 2 on no-go"
       }
     ],
     "decisions": [
@@ -311,6 +332,11 @@
         "id": "ADR-31",
         "decision": "Entity ranking uses a stable sort with first-seen tie-break everywhere (np.argsort kind=stable in pipeline/streaming/export; stable sort_by in Rust). Exact probability ties are data-inherent, not fixable by seeds: structurally identical entities (same feature history, isomorphic graph position) score identically under ANY weights, and numpy's default introsort made their ranked order an unspecified artifact. A defined tie order is required for findings to be reproducible across runs, platforms, and the Rust bridge. One pre-existing test loosened to set-comparison: a ~1e-8 batch-vs-streaming float difference can legitimately break an exact tie in only one path, permuting tied neighbors",
         "where": "src/idr_intelligence/pipeline.py; tests/test_system.py test_streaming_matches_batch_scoring"
+      },
+      {
+        "id": "ADR-32",
+        "decision": "Ground the deterministic ATT&CK machinery in real MITRE data. Lee pointed at /home/lee/Desktop/cti (the MITRE ATT&CK/CAPEC STIX repo). scripts/ground_attack_reference.py distills the 45MB Enterprise STIX bundle into a compact committed src/idr_intelligence/data/attack_reference.json (canonical 14-tactic order + 691 techniques id->{name,tactics}); attack.py derives TACTIC_ORDER from it and validates KIND_TO_ATTACK against it (validate_mapping_against_reference). Every one of the 11 hand-typed mappings was already tactic-consistent with real MITRE (validated, not assumed); the only gap was the hand TACTIC_ORDER omitting the two pre-compromise tactics (reconnaissance, resource-development) \u2014 added, which is behavior-preserving for next_stage because no kind maps to them and relative order is unchanged. A freshness test rebuilds from the live bundle when present so a MITRE release cannot leave the vendored copy stale. HONEST SCOPE: this grounds the DETERMINISTIC/auditable field idr-sentinel corroborates and can make the simulator more realistic; it is NOT labeled IdrEvent campaign data, so it does not close the training/calibration wall for the learned escalation model.",
+        "where": "src/idr_intelligence/attack.py; scripts/ground_attack_reference.py; src/idr_intelligence/data/attack_reference.json"
       }
     ]
   },
@@ -344,7 +370,12 @@
       "W17: ONNX export + Rust serving bridge (export.py + CLI export; rust/idr-intelligence-rt on tract, golden-pinned to StreamingScorer; rust/idr-common-parity wire proof against the real idr_common from the idr-main tree; CI extended with cargo fmt/clippy/test). ROADMAP COMPLETE - all 17 workstreams shipped",
       "W17 adversarial review (65-agent workflow: 5 lenses -> 30 raw findings -> 2 refuters each -> 19 confirmed) and fix slice: use_gnn=False export now declares/feeds the head's real input signature (nognn golden bundle added); OnnxStreamScorer verifies feature_schema_hash and reads evidence_limit from the manifest; manifest constants are imported from features.py (SEVERITY_DEFAULT/KIND_PRIOR_DEFAULT/DELTA_LOG_DIVISOR), test-tied; _masked_max avoids the IsInf op (uniform-pooling bundles tract-loadable, test-pinned); CampaignModel rejects non-positive decay_half_life; Rust truncates wire timestamps to microseconds (idr-main emits nanoseconds), accepts Python's falsy-metadata and common naive-ISO shapes, validates manifests (feature-name length, decay, stats shape) instead of panicking, and feeds the head per the manifest's input list; fixtures regenerated with content-addressed ids (campaign_id now discriminates), a real drift baseline (some-but-not-all features flag), budget-case gap checks, salt-searched tie-free rankings, and 9 hand-authored edge-case events covering every extraction branch; parity.rs adds field-set equality + manifest-rejection tests; ranked_indices extracted with tie unit tests both sides; freshness gates in test_system.py replay all committed goldens + feature vectors against the current engine so staleness fails CI. Deferred with documentation: per-event entity caps (parity with Python; trust boundary documented in the crate README), exotic ISO-8601 shapes, rolling Arch rust toolchain in CI (same class as the ruff pin \u2014 revisit on first breakage)",
       "Review closeout \u2014 the four partially-addressed/deferred confirmed findings are now fixed for real: (#17) both stream CLIs default to --max-nodes 4096 with 0=unbounded (engine APIs unchanged; symmetric Python/Rust; dense N x N adjacency bounded on untrusted streams); (#15) rust-toolchain.toml pins 1.96.1 at the repo root and CI installs rustup instead of Arch's rolling rust package (all cargo gates re-verified under 1.96.1); (#7) the Rust timestamp parser now accepts every shape Python's fromisoformat does (comma fractions, basic separator-free forms, hour-only precision, colon-less offsets), pinned by a 12-shape unit table and three new exotic-timestamp fixture events; (#14) Rust golden tolerance tightened 1e-4 -> 2e-6 (goldens are 6-decimal rounded so runtime drift is quantized; measured ORT-vs-golden diff 0.0, tract passes at 2e-6; pytest freshness stays 1e-4 because CI's ORT version floats). Rejected findings stay rejected (each refuted by two verifiers with reproduction); the cross-language tie-order golden remains closed at the unit level because a tie in one runtime is a near-tie in another",
-      "Review closeout hardening after a 3-agent verification pass falsified the timestamp-parity claim: the Rust timestamp parser is now a structural mirror of CPython's fromisoformat algorithm itself (separator-finder heuristics incl. the week-date digit-run parity rule, first-of-any tz scan with Z-must-be-final, sticky basic/extended time modes, one-junk-char-before-offset tolerance, min(remaining,6) fraction quotas with any-length pre-offset tails, offset components unchecked but total < 24h, hour-24 rollover on the RAW day number so 2026-03-00T24:00 parses, Python's year 1..9999 range). Acceptance parity is a pinned contract: committed timestamp_battery.json (~400 shapes, verdicts computed by the reference interpreter, replayed by cargo AND a pytest freshness gate) plus ~200k differential-fuzz shapes across three rounds with zero divergence; an IDR_RT_EXTRA_BATTERY env hook keeps large sweeps reproducible. Also fixed from that pass: stale parity.rs tolerance header and the crate README's contradictory timestamp paragraph"
+      "Review closeout hardening after a 3-agent verification pass falsified the timestamp-parity claim: the Rust timestamp parser is now a structural mirror of CPython's fromisoformat algorithm itself (separator-finder heuristics incl. the week-date digit-run parity rule, first-of-any tz scan with Z-must-be-final, sticky basic/extended time modes, one-junk-char-before-offset tolerance, min(remaining,6) fraction quotas with any-length pre-offset tails, offset components unchecked but total < 24h, hour-24 rollover on the RAW day number so 2026-03-00T24:00 parses, Python's year 1..9999 range). Acceptance parity is a pinned contract: committed timestamp_battery.json (~400 shapes, verdicts computed by the reference interpreter, replayed by cargo AND a pytest freshness gate) plus ~200k differential-fuzz shapes across three rounds with zero divergence; an IDR_RT_EXTRA_BATTERY env hook keeps large sweeps reproducible. Also fixed from that pass: stale parity.rs tolerance header and the crate README's contradictory timestamp paragraph",
+      "Production-readiness assessment + operational logging: honest reports/PRODUCTION_READINESS.md separating strong software readiness from blocked detector readiness (the wall is real labeled data + a realized runtime, not code); added observability.py (opt-in JSON-lines stderr via CLI --log-level, model-load provenance, finding summaries with timing, clean operational errors on missing/corrupt checkpoints), NullHandler so library import stays silent. 118 py tests",
+      "Real-data validation gate (production track chosen by Lee): idr-intelligence validate + validation.py. On a strictly time-ordered holdout it re-fits affine calibration and selects an operating threshold at --target-fpr on the earlier segment, snapshots a real-traffic drift baseline (feature_snapshot), and verifies ROC-AUC/ECE/recall + the REALIZED FPR-at-threshold on the untouched later segment; configurable --gate KEY=VALUE risk-appetite thresholds become a go/no-go verdict, a model card, and (only on go) a recalibrated checkpoint. Exits 2 on no-go so a deploy pipeline halts. Honesty is structural: provenance is operator-attested and a verdict is BINDING only when it names real data (synthetic/sim/standin/demo -> non-binding wiring check); unknown --gate keys are rejected rather than silently ignored. Reuses windows_to_batch/affine_calibration_params/feature_snapshot/_evaluate so no scoring logic is duplicated. 125 py tests (adds 7 validation + 3 observability)",
+      "ATT&CK finding enrichment (cross-language): observed_attack_stages now carries the real MITRE technique_name (e.g. T1041 -> 'Exfiltration Over C2 Channel'). Centralized the stage dict in attack.stage_record() so the batch/streaming/ONNX-runner paths can't drift; enriched the export manifest's kind_to_attack; propagated technique_name through the Rust manifest, Stage, and observe() so the golden-pinned parity holds. Also fixed a latent flake in test_streaming_matches_batch_scoring (unseeded model init made it order-dependent at top-k tie boundaries) by seeding. 129 py + rust/wire suites green.",
+      "Deployment hardening: Makefile (`make gates` runs the full CI locally: pytest/ruff/mypy/benchmark/cargo fmt+clippy+test; plus venv/attack-reference/docker targets), Python engine Dockerfile (CPU torch, non-root, pinned python:3.12-slim base), minimal multi-stage Rust serving Dockerfile (rust:1.96 build -> debian-slim + binary, --locked), .dockerignore. Makefile verified end-to-end; Docker images static-verified (daemon unreachable in sandbox).",
+      "Vendored idr-common into the repo (rust/idr-common), repointed idr-common-parity off the machine-local idr-main path onto it, and added the parity wire tests to CI. Only idr-common was vendored (the integration surface), NOT the full 42GB idr-main platform (BGP daemon/eBPF/hardware/sentinel/Next.js dashboard/data blobs = out of scope + the user's own concern). Verbatim byte-identical copy (diff -rq clean); standalone Cargo.toml un-inherits the workspace fields; VENDOR.md documents provenance + the GPL-2.0-only vs GPL-3.0-or-later license tension (Lee's call). idr-common-parity's 3 wire tests now build+pass in CI against the real types."
     ],
     "active": [],
     "blocked": []
@@ -410,10 +441,20 @@
         "cmd": "differential fuzz: Python fromisoformat vs Rust mirror (12k + 77k + 116k shapes, three seeds/mutation strategies)",
         "when": "2026-07-26",
         "result": "zero divergence after mirroring the reference algorithm; every discovered mechanism pinned in the committed battery"
+      },
+      {
+        "cmd": "idr-intelligence validate --data <windows> --data-provenance soc-2026Q2 --gate max_ece=0.6 --model-card CARD.md --out-weights validated.pt",
+        "when": "2026-07-26",
+        "result": "end-to-end go verdict on a simulator stand-in: binding=true on real-named provenance, model card + recalibrated checkpoint written, structured validation_complete log emitted, exit 0; default ECE gate correctly yields no-go + exit 2 on the same undersized/overconfident model"
+      },
+      {
+        "cmd": "validate KIND_TO_ATTACK against MITRE ATT&CK Enterprise STIX (/home/lee/Desktop/cti)",
+        "when": "2026-07-26",
+        "result": "all 11 hand-typed mappings tactic-consistent with real MITRE; TACTIC_ORDER regrounded to the canonical 14-tactic matrix order (added reconnaissance + resource-development); 128 py tests + 6 rust green after fixture regen"
       }
     ],
     "tests": [
-      "tests: 114 python (adds W17 review coverage: no-GNN export parity, uniform-pooling export without IsInf, schema-hash rejection, manifest constants == code constants, decay validation, stable tie-break semantics, fixture-freshness gates replaying all committed goldens + feature vectors) + 12 rust bridge tests (3 order-pinned goldens + reduced-comparison nognn golden + manifest rejection + feature vectors incl. 9 edge-case events + ranking/histogram/rounding units) + 3 machine-local idr-common wire tests"
+      "tests: 125 python (adds validation gate: go on relaxed gates but non-binding on synthetic provenance, binding only on attested real provenance, no-go when a gate fails, single-class-segment rejection, unknown-gate rejection, CLI roundtrip writing card + recalibrated checkpoint, CLI exit-2 on no-go; observability: structured stderr without touching stdout, quiet by default, clean model-load error) + 15 rust bridge tests + 3 machine-local wire tests"
     ],
     "benchmarks": [
       {
@@ -523,6 +564,30 @@
     {
       "path": "rust/idr-common-parity/",
       "role": "machine-local integration crate vs real idr_common (path-dep on idr-main tree; not in CI)"
+    },
+    {
+      "path": "reports/PRODUCTION_READINESS.md",
+      "role": "software-vs-detector readiness assessment; staged go-live path (deployment hardening -> real-data validation gate -> real data -> runtime -> integration -> shadow)"
+    },
+    {
+      "path": "src/idr_intelligence/data/attack_reference.json",
+      "role": "canonical enterprise tactic order + technique catalog distilled from the MITRE ATT&CK Enterprise STIX bundle (regenerable via scripts/ground_attack_reference.py)"
+    },
+    {
+      "path": "Makefile",
+      "role": "one-command reproducible gates + build (make gates / docker / attack-reference)"
+    },
+    {
+      "path": "Dockerfile",
+      "role": "Python engine image (CPU torch, non-root)"
+    },
+    {
+      "path": "rust/idr-intelligence-rt/Dockerfile",
+      "role": "minimal multi-stage Rust serving image (binary only, no Python/ORT)"
+    },
+    {
+      "path": "rust/idr-common/",
+      "role": "vendored idr_common crate (IdrEvent wire types) + VENDOR.md provenance/license note"
     }
   ],
   "compressed_state": {
@@ -531,7 +596,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-26",
-      "summary": "All 19 confirmed review findings closed for real. The timestamp fix graduated from format-enumeration to a fuzz-verified structural mirror of CPython's fromisoformat with a committed acceptance-battery contract. 115 py + 15 rust tests, all gates green under pinned rustc 1.96.1"
+      "summary": "Vendored idr-common (the idr-main integration surface) into the repo so the wire-parity crate builds in CI against the real IdrEvent types \u2014 no machine-local path. Vendored ONLY idr-common, not the 42GB platform (scope + GPL-2.0-vs-3.0 license, flagged in VENDOR.md for Lee's decision)."
     }
   }
 }

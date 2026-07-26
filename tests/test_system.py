@@ -1157,6 +1157,11 @@ def test_streaming_matches_batch_scoring():
     events = simulate_campaign(label=1, seed=8)
     ordered = sorted(events, key=lambda event: (event.timestamp, event.id))
     for time_mode in ("global", "per_entity", "time_aware"):
+        # Seed the model init: without this the weights depend on the global
+        # torch RNG left by prior tests, which can land on a top-k boundary tie
+        # where stream and batch pick different tied entities (an order-dependent
+        # flake in this equivalence check, not a real divergence).
+        torch.manual_seed(1234)
         model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4, time_mode=time_mode)
         batch = score_events(events, model, max_steps=64)
         scorer = StreamingScorer(model)
@@ -1640,3 +1645,280 @@ def test_timestamp_battery_is_fresh():
         except (ValueError, OverflowError):
             utc = None
         assert utc == entry["utc"], entry["shape"]
+
+
+def test_cli_log_level_emits_structured_stderr_without_touching_stdout(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    lines = []
+    for event in simulate_campaign(1, 5):
+        lines.append(json.dumps({
+            "id": event.id, "timestamp": event.timestamp.isoformat(), "source": event.source,
+            "severity": event.severity, "kind": event.kind, "metadata": event.metadata,
+        }))
+    events_path.write_text("\n".join(lines) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4), weights)
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "score", str(events_path), "--weights", str(weights), "--log-level", "info"])
+    cli.main()
+    captured = capsys.readouterr()
+    # stdout is still exactly the finding JSON — logs never contaminate it.
+    finding = json.loads(captured.out)
+    assert finding["campaign_id"].startswith("idr-campaign-")
+    # stderr carries structured JSON-lines operational events.
+    records = [json.loads(line) for line in captured.err.splitlines() if line.strip()]
+    events_by_name = {record["event"]: record for record in records}
+    assert "model_loaded" in events_by_name
+    assert events_by_name["model_loaded"]["feature_schema_hash"] == feature_schema_hash()
+    scored = events_by_name["finding_scored"]
+    assert scored["campaign_id"] == finding["campaign_id"]
+    assert scored["graph_nodes"] == finding["graph_nodes"]
+    assert "elapsed_ms" in scored
+
+
+def test_cli_default_log_level_is_quiet(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    events_path.write_text("\n".join(
+        json.dumps({
+            "id": event.id, "timestamp": event.timestamp.isoformat(), "source": event.source,
+            "severity": event.severity, "kind": event.kind, "metadata": event.metadata,
+        })
+        for event in simulate_campaign(1, 5)
+    ) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4), weights)
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "score", str(events_path), "--weights", str(weights)])
+    cli.main()
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["campaign_id"]  # stdout finding intact
+    assert captured.err == ""  # default warning level: no info logs
+
+
+def test_cli_missing_model_logs_operational_error(tmp_path, monkeypatch, capsys):
+    events_path = tmp_path / "events.ndjson"
+    events_path.write_text(json.dumps({
+        "id": "x", "timestamp": "2026-03-01T00:00:00+00:00", "source": "kernel_ebpf",
+        "severity": "HIGH", "kind": {"type": "socket_lineage", "pid": 1},
+    }) + "\n")
+    monkeypatch.setattr("sys.argv", ["idr-intelligence", "score", str(events_path), "--weights", str(tmp_path / "nope.pt"), "--log-level", "error"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    records = [json.loads(line) for line in capsys.readouterr().err.splitlines() if line.strip()]
+    assert any(record["event"] == "model_load_failed" and record["level"] == "ERROR" for record in records)
+
+
+def _labeled_windows(count, scenario="v0_easy"):
+    from idr_intelligence.schema import LabeledWindow
+
+    windows = []
+    for index in range(count):
+        label = index % 2
+        events = simulate_campaign(label, seed=index, scenario=scenario)
+        windows.append(LabeledWindow(window_id=f"w{index:03d}", label=label, events=tuple(events)))
+    return windows
+
+
+def _fit_model_on(windows, time_mode="global", epochs=6):
+    from idr_intelligence.training import (
+        HIDDEN_DIM,
+        STATE_DIM,
+        _fit,
+        chronological_split,
+        set_seed,
+        windows_to_batch,
+    )
+
+    set_seed(7)
+    train, val, _ = chronological_split(windows_to_batch(windows, time_mode=time_mode))
+    model = CampaignModel(FEATURE_DIM, hidden_dim=HIDDEN_DIM, state_dim=STATE_DIM, time_mode=time_mode)
+    _fit(model, train, val, epochs=epochs)
+    return model
+
+
+def test_validate_gate_produces_go_on_relaxed_gates_but_not_binding_on_synthetic():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(64)
+    model = _fit_model_on(windows)
+    # Relax ECE (tiny synthetic separable data is overconfident); this exercises
+    # the go path. Provenance is synthetic, so the verdict must stay non-binding.
+    report = validate_model(model, windows, target_fpr=0.05, holdout=0.4, provenance="synthetic-standin", gates={"max_ece": 0.6})
+    assert report["verdict"] == "go"
+    assert report["binding"] is False  # synthetic provenance can never bind
+    assert "WIRING verdict" in report["verdict_note"]
+    assert report["operating_threshold"]["tau"] is not None
+    assert report["drift_baseline"]["sample_count"] > 0
+    assert model.feature_stats is not None  # real drift baseline installed on the model
+    assert all(gate["value"] is not None for gate in report["gates"])
+
+
+def test_validate_binding_requires_attested_real_provenance():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(64)
+    model = _fit_model_on(windows)
+    report = validate_model(model, windows, target_fpr=0.05, holdout=0.4, provenance="soc-incidents-2026Q2", gates={"max_ece": 0.6})
+    assert report["verdict"] == "go"
+    assert report["binding"] is True
+    assert "shadow/advisory deployment" in report["verdict_note"]
+
+
+def test_validate_no_go_when_a_gate_fails():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(64)
+    model = _fit_model_on(windows)
+    # Default ECE gate (0.10) fails on the overconfident synthetic model.
+    report = validate_model(model, windows, target_fpr=0.05, holdout=0.4, provenance="soc-incidents-2026Q2")
+    assert report["verdict"] == "no-go"
+    assert report["binding"] is False  # a failed gate can never bind, even on real data
+    assert any(gate["name"] == "ece" and not gate["pass"] for gate in report["gates"])
+
+
+def test_validate_rejects_single_class_segment():
+    from idr_intelligence.schema import LabeledWindow
+    from idr_intelligence.validation import validate_model
+
+    # Every window malicious -> the test segment is single-class.
+    windows = [
+        LabeledWindow(window_id=f"w{i}", label=1, events=tuple(simulate_campaign(1, seed=i)))
+        for i in range(8)
+    ]
+    model = _fit_model_on(_labeled_windows(40))
+    with pytest.raises(ValueError, match="single-class"):
+        validate_model(model, windows, holdout=0.5)
+
+
+def test_validate_rejects_unknown_gate():
+    from idr_intelligence.validation import validate_model
+
+    windows = _labeled_windows(40)
+    model = _fit_model_on(windows)
+    with pytest.raises(ValueError, match="unknown gate"):
+        validate_model(model, windows, gates={"max_eces": 0.5})
+
+
+def test_cli_validate_roundtrip_writes_card_and_recalibrated_checkpoint(tmp_path, monkeypatch, capsys):
+    windows = _labeled_windows(64)
+    data_path = tmp_path / "campaigns.labeled.ndjson"
+    data_path.write_text("\n".join(
+        json.dumps({
+            "window_id": window.window_id, "label": window.label,
+            "events": [
+                {"id": e.id, "timestamp": e.timestamp.isoformat(), "source": e.source, "severity": e.severity, "kind": e.kind, "metadata": e.metadata}
+                for e in window.events
+            ],
+        })
+        for window in windows
+    ) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(_fit_model_on(windows), weights)
+    card = tmp_path / "MODEL_CARD.md"
+    out_weights = tmp_path / "validated.pt"
+    monkeypatch.setattr("sys.argv", [
+        "idr-intelligence", "validate", "--data", str(data_path), "--weights", str(weights),
+        "--target-fpr", "0.05", "--holdout", "0.4", "--data-provenance", "soc-incidents-2026Q2",
+        "--gate", "max_ece=0.6", "--model-card", str(card), "--out-weights", str(out_weights),
+    ])
+    cli.main()  # verdict go -> exit 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["verdict"] == "go"
+    assert report["binding"] is True
+    assert report["model_card"] == str(card)
+    assert card.exists() and "Model Card" in card.read_text()
+    assert out_weights.exists()
+    # The recalibrated checkpoint carries the real drift baseline.
+    reloaded = load_campaign_model(out_weights)
+    assert reloaded.feature_stats is not None
+
+
+def test_cli_validate_exits_nonzero_on_no_go(tmp_path, monkeypatch):
+    windows = _labeled_windows(64)
+    data_path = tmp_path / "campaigns.labeled.ndjson"
+    data_path.write_text("\n".join(
+        json.dumps({
+            "window_id": window.window_id, "label": window.label,
+            "events": [
+                {"id": e.id, "timestamp": e.timestamp.isoformat(), "source": e.source, "severity": e.severity, "kind": e.kind, "metadata": e.metadata}
+                for e in window.events
+            ],
+        })
+        for window in windows
+    ) + "\n")
+    weights = tmp_path / "model.pt"
+    save_checkpoint(_fit_model_on(windows), weights)
+    monkeypatch.setattr("sys.argv", [
+        "idr-intelligence", "validate", "--data", str(data_path), "--weights", str(weights),
+        "--target-fpr", "0.05", "--holdout", "0.4",  # default ECE gate fails -> no-go
+    ])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
+
+
+def test_tactic_order_is_canonical_mitre():
+    from idr_intelligence.attack import ATTACK_REFERENCE, TACTIC_ORDER
+
+    # The canonical 14 enterprise tactics, in matrix order, incl. the two
+    # pre-compromise tactics the old hand-typed order omitted.
+    assert TACTIC_ORDER == tuple(ATTACK_REFERENCE["enterprise_tactic_order"])
+    assert TACTIC_ORDER[:3] == ("reconnaissance", "resource-development", "initial-access")
+    assert TACTIC_ORDER[-1] == "impact"
+    assert len(TACTIC_ORDER) == 14
+    # Adding the front tactics is behaviour-preserving: no kind maps to them.
+    from idr_intelligence.attack import KIND_TO_ATTACK
+
+    mapped = {mapping["tactic"] for mapping in KIND_TO_ATTACK.values()}
+    assert not mapped & {"reconnaissance", "resource-development"}
+
+
+def test_kind_to_attack_is_consistent_with_mitre():
+    from idr_intelligence.attack import (
+        KIND_TO_ATTACK,
+        technique_name,
+        validate_mapping_against_reference,
+    )
+
+    assert validate_mapping_against_reference() == []
+    # Enrichment: every mapped technique resolves to its real MITRE name.
+    for mapping in KIND_TO_ATTACK.values():
+        assert technique_name(mapping["technique"]) is not None
+    assert technique_name("T1041") == "Exfiltration Over C2 Channel"
+    assert technique_name("T9999") is None
+
+
+def test_vendored_attack_reference_is_fresh_if_bundle_present():
+    """If the MITRE bundle is on disk, the committed reference must match a fresh
+    rebuild — so a MITRE release can't leave the vendored copy silently stale."""
+    import os
+    import sys
+
+    bundle = os.environ.get("IDR_ATTACK_BUNDLE", "/home/lee/Desktop/cti/enterprise-attack/enterprise-attack.json")
+    if not Path(bundle).is_file():
+        pytest.skip("MITRE ATT&CK bundle not present; skipping freshness check")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    import ground_attack_reference
+
+    from idr_intelligence.attack import ATTACK_REFERENCE
+
+    rebuilt = ground_attack_reference.build_reference(bundle)
+    assert rebuilt["enterprise_tactic_order"] == ATTACK_REFERENCE["enterprise_tactic_order"]
+    assert rebuilt["techniques"] == ATTACK_REFERENCE["techniques"]
+
+
+def test_findings_carry_real_technique_names():
+    from idr_intelligence.streaming import StreamingScorer
+
+    events = simulate_campaign(label=1, seed=8)
+    model = CampaignModel(FEATURE_DIM, hidden_dim=12, state_dim=4)
+    finding = score_events(events, model)
+    stages = finding.observed_attack_stages
+    assert stages
+    for stage in stages:
+        assert stage.get("technique_name")  # real MITRE name, never empty
+    names = {stage["technique"]: stage["technique_name"] for stage in stages}
+    assert names.get("T1041") == "Exfiltration Over C2 Channel"
+    # Streaming and batch agree on the enriched stage records.
+    scorer = StreamingScorer(model)
+    for event in sorted(events, key=lambda e: (e.timestamp, e.id)):
+        scorer.ingest(event)
+    assert scorer.finding().observed_attack_stages == stages

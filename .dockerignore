@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+**/target
+artifacts
+reports/demo.json
+**/__pycache__
+*.egg-info
+.mypy_cache
+.pytest_cache
+tests
+docs

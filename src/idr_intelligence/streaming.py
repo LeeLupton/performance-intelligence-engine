@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from .attack import KIND_TO_ATTACK, next_stage_from_stages
+from .attack import next_stage_from_stages, stage_record
 from .bounded_graph import EvictionRecord, GraphBudget
 from .campaigns import CampaignRegistry
 from .config import DEFAULT_CONFIG, ENGINE_VERSION
@@ -96,14 +96,10 @@ class StreamingScorer:
         self._previous_time = event.timestamp
         if self._first_event is None or (event.timestamp, event.id) < self._first_event:
             self._first_event = (event.timestamp, event.id)
-        mapping = KIND_TO_ATTACK.get(event.kind_type)
-        if mapping is not None and event.kind_type not in self._stages:
-            self._stages[event.kind_type] = {
-                "tactic": mapping["tactic"],
-                "technique": mapping["technique"],
-                "kind_type": event.kind_type,
-                "first_event_id": event.id,
-            }
+        if event.kind_type not in self._stages:
+            record = stage_record(event.kind_type, event.id)
+            if record is not None:
+                self._stages[event.kind_type] = record
         assert self.model.temporal is not None
         with torch.no_grad():
             for entity in projection.entities:
