@@ -3,8 +3,9 @@ name = "idr-common"
 description = "Shared types, events, and protocols for the IDR system"
 version = "0.1.0"
 edition = "2024"
-# Preserved from idr-main; NOT the repo's GPL-3.0-or-later. See VENDOR.md.
-license = "GPL-2.0-only"
+# Relicensed GPL-2.0-only -> GPL-2.0-or-later by the owner (Lee), so it is
+# license-compatible with the repo's GPL-3.0-or-later. See VENDOR.md.
+license = "GPL-2.0-or-later"
 
 # Vendored verbatim from Lee's idr-main workspace (crates/idr-common) so the
 # wire-compatibility proof builds in CI without a machine-local path. The
