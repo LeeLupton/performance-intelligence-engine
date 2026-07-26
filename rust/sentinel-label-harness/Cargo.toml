@@ -1,0 +1,18 @@
+[package]
+name = "sentinel-label-harness"
+description = "Drive idr-main's real SentinelCorrelator over synthetic windows; capture ImpossibleState confirmations as ground-truth labels"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+
+# MACHINE-LOCAL, not in CI: path-deps into the idr-main working tree (the whole
+# sentinel correlator). Panic response is a verified no-op here because the
+# config leaves auto_panic_enabled=false — the ip/nvme commands are unreachable.
+[workspace]
+
+[dependencies]
+idr-common = { path = "../../../../CYBER/idr-main/idr-main/crates/idr-common" }
+idr-sentinel = { path = "../../../../CYBER/idr-main/idr-main/crates/idr-sentinel" }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+uuid = { version = "1.24.0", features = ["v4"] }

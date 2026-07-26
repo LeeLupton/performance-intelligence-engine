@@ -115,6 +115,7 @@ src/idr_intelligence/cli.py         demo · score · stream · export · benchma
 rust/idr-intelligence-rt/           Rust serving bridge on tract (golden-pinned to StreamingScorer)
 rust/idr-common/                    vendored idr_common crate from idr-main (the IdrEvent wire types; see its VENDOR.md)
 rust/idr-common-parity/             wire parity vs the real idr_common types — builds in CI against the vendored crate
+rust/sentinel-label-harness/        red-team label driver: synthetic windows -> real SentinelCorrelator -> correlator-assigned labels (machine-local)
 benchmarks/v1.json                  frozen benchmark manifest with regression floors
 docs/ARCHITECTURE.md                integration design + Rust EventKind contract
 src/idr_intelligence/observability.py  opt-in JSON-lines stderr logging (model provenance, timing, drift, evictions)

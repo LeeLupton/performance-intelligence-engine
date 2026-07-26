@@ -123,6 +123,32 @@ real labeled positives exist — a red-team run driven through the live sentinel
 or a confirmed incident that makes `production_alerts.json` non-empty — the
 same three commands produce a **binding** go/no-go with a real model card.
 
+### Red-team label driver — labels from the real correlator (built)
+
+`rust/sentinel-label-harness/` (machine-local) drives synthetic multi-modal
+windows through idr-main's **real `SentinelCorrelator`** and labels each window
+by the correlator's own verdict — an emitted `ImpossibleState` = the platform
+confirmed a campaign. Verified working: 40 correlator-confirmed positives + 40
+non-confirmed negatives, fed to `demo --data` → `validate` → **go**
+(non-binding). The confirmation is genuine: the correlator only fires when the
+events match the real attack semantics (a TTL single-hop intercept on a
+**high-trust** path — Google/Cloudflare/Facebook, seeded in the reputation DB —
+plus an IGMP→QUIC correlation, emitted before the exfil signal so it isn't
+diverted into the panic-condition path). Getting there meant reverse-engineering
+the correlator's actual recipe, not asserting a label.
+
+**Safety:** the harness runs a fresh in-process correlator with
+`auto_panic_enabled = false`, so `panic_response.execute()` returns before the
+`ip link set down` / `nvme format --ses=2` commands are ever reached; nothing
+touches the live daemon or its production state.
+
+This closes the **label** axis: campaign labels now come from idr-main's own
+deterministic correlator rather than a hand-asserted template. It does not close
+the **event** axis — the events are still synthetic, so the verdict stays
+non-binding until real captured telemetry replaces them. And ROC-AUC is again
+1.0, the same honest caveat: the correlator's positives carry attribute-obvious
+malicious semantics, so this validates the pipeline, not detection difficulty.
+
 ## Detector readiness — the wall
 
 This is the load-bearing section. Every accuracy number in this repo comes
