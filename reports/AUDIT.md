@@ -63,3 +63,38 @@ a demonstrated accuracy gain:
    simpler mode, and empirically better across every scenario measured.
    Per-entity and time-aware modes remain available explicitly for real-data
    deployments where entity-relative rhythms are expected to carry signal.
+
+## Finding: ATT&CK mapping audit — tactic-consistency is not semantic correctness
+
+The `KIND_TO_ATTACK` table (the auditable ATT&CK field `idr-sentinel`
+corroborates and an analyst puts in intel products) was originally hand-typed at
+W5. A later pass "grounded" it against the MITRE Enterprise STIX bundle, but that
+check only verified **tactic-consistency** — that each technique exists and its
+MITRE tactics include the assigned tactic. That is too weak: it passes a
+technique that is tactically valid but describes the wrong *activity*.
+
+Prompted by a user catching `physics_anomaly → T1495 (Firmware Corruption)` — a
+TTL/RTT path-intercept signal mapped to a device-firmware-wipe technique — all 11
+mappings were re-audited for **semantic** fit (a 21-agent adversarial workflow;
+several agents fetched primary MITRE text). Corrections applied:
+
+| kind | was | now | why |
+|---|---|---|---|
+| `physics_anomaly` | impact / T1495 Firmware Corruption | collection / **T1557** Adversary-in-the-Middle | a single-hop TTL/RTT intercept is on-path interception, not firmware corruption |
+| `impossible_state` | impact / T1499 Endpoint DoS | **unmapped** | the sentinel's own confirmation verdict — no adversary technique means "my correlator fired"; the old mapping existed only to make next-stage say "kill-chain-complete" |
+| `nvme_latency_anomaly` | exfiltration / T1041 Exfiltration Over C2 | collection / **T1005** Data from Local System | a disk-latency sensor observes local bulk reads, not a C2 egress channel |
+| `octet_reversal_detected` | defense-evasion / T1027 Obfuscated Files | command-and-control / **T1001** Data Obfuscation | a DNS-PTR trick hides the C2 destination in transit; there is no file |
+| `hsts_time_manipulation` | credential-access / T1557 AitM | defense-evasion / **T1553** Subvert Trust Controls | accepting an expired cert via a time rollback subverts a trust control; T1557 named only the downstream goal |
+| `suspicious_beacon` | C2 / T1071 Application Layer Protocol | command-and-control / **T1102** Web Service | the discriminator is beaconing to a high-trust web service used as a C2 carrier |
+| `socket_lineage` | execution / T1059 Command and Scripting Interpreter | command-and-control / **T1071** Application Layer Protocol | the event observes an outbound app-layer socket, not a script interpreter |
+
+Kept after primary-source verification: `bgp_anomaly` (collection/T1557 —
+parent-level AitM covers routing interception), `ntp_time_shift` and
+`rtc_clock_divergence` (defense-evasion/T1562 Impair Defenses), `mac_flapping`
+(collection/T1557.002 ARP Cache Poisoning — an exact fit).
+
+Consequence: findings no longer claim an `execution` or `exfiltration` stage the
+sensors don't actually observe; `predict_next_stage` shifts accordingly (e.g. a
+full synthetic campaign now predicts `exfiltration`, not `impact`). The audit is
+reproducible; the `validate_mapping_against_reference()` test still enforces
+tactic-consistency, but semantic fit remains a human/committed-record judgment.

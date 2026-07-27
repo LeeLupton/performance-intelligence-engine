@@ -2,7 +2,7 @@
   "format": "idr-intelligence-onnx-v1",
   "engine_version": "0.1.0",
   "model_version": "fixture-v1",
-  "created_at": "2026-07-26T10:58:40.945913+00:00",
+  "created_at": "2026-07-27T01:31:14.242837+00:00",
   "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
   "model": {
     "feature_dim": 22,
@@ -87,14 +87,14 @@
     ],
     "kind_to_attack": {
       "socket_lineage": {
-        "tactic": "execution",
-        "technique": "T1059",
-        "technique_name": "Command and Scripting Interpreter"
-      },
-      "suspicious_beacon": {
         "tactic": "command-and-control",
         "technique": "T1071",
         "technique_name": "Application Layer Protocol"
+      },
+      "suspicious_beacon": {
+        "tactic": "command-and-control",
+        "technique": "T1102",
+        "technique_name": "Web Service"
       },
       "bgp_anomaly": {
         "tactic": "collection",
@@ -107,14 +107,14 @@
         "technique_name": "Impair Defenses"
       },
       "hsts_time_manipulation": {
-        "tactic": "credential-access",
-        "technique": "T1557",
-        "technique_name": "Adversary-in-the-Middle"
+        "tactic": "defense-evasion",
+        "technique": "T1553",
+        "technique_name": "Subvert Trust Controls"
       },
       "nvme_latency_anomaly": {
-        "tactic": "exfiltration",
-        "technique": "T1041",
-        "technique_name": "Exfiltration Over C2 Channel"
+        "tactic": "collection",
+        "technique": "T1005",
+        "technique_name": "Data from Local System"
       },
       "mac_flapping": {
         "tactic": "collection",
@@ -127,19 +127,14 @@
         "technique_name": "Impair Defenses"
       },
       "physics_anomaly": {
-        "tactic": "impact",
-        "technique": "T1495",
-        "technique_name": "Firmware Corruption"
+        "tactic": "collection",
+        "technique": "T1557",
+        "technique_name": "Adversary-in-the-Middle"
       },
       "octet_reversal_detected": {
-        "tactic": "defense-evasion",
-        "technique": "T1027",
-        "technique_name": "Obfuscated Files or Information"
-      },
-      "impossible_state": {
-        "tactic": "impact",
-        "technique": "T1499",
-        "technique_name": "Endpoint Denial of Service"
+        "tactic": "command-and-control",
+        "technique": "T1001",
+        "technique_name": "Data Obfuscation"
       }
     }
   },
