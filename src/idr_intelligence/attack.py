@@ -29,26 +29,31 @@ def _load_attack_reference() -> dict[str, Any]:
 ATTACK_REFERENCE = _load_attack_reference()
 
 # Canonical enterprise kill-chain order, straight from the MITRE ATT&CK matrix
-# (includes the two pre-compromise tactics the hand-typed order omitted). The
-# relative order of every tactic the engine maps to is unchanged, so next-stage
-# predictions are identical — but the order is now provably canonical.
+# (includes the two pre-compromise tactics the hand-typed order omitted).
 TACTIC_ORDER = tuple(ATTACK_REFERENCE["enterprise_tactic_order"])
 
 KIND_TO_ATTACK = {
-    "socket_lineage": {"tactic": "execution", "technique": "T1059"},
-    "suspicious_beacon": {"tactic": "command-and-control", "technique": "T1071"},
-    "bgp_anomaly": {"tactic": "collection", "technique": "T1557"},
-    "ntp_time_shift": {"tactic": "defense-evasion", "technique": "T1562"},
-    "hsts_time_manipulation": {"tactic": "credential-access", "technique": "T1557"},
-    "nvme_latency_anomaly": {"tactic": "exfiltration", "technique": "T1041"},
-    "mac_flapping": {"tactic": "collection", "technique": "T1557.002"},
-    "rtc_clock_divergence": {"tactic": "defense-evasion", "technique": "T1562"},
-    "physics_anomaly": {"tactic": "impact", "technique": "T1495"},
-    "octet_reversal_detected": {"tactic": "defense-evasion", "technique": "T1027"},
-    "impossible_state": {"tactic": "impact", "technique": "T1499"},
-    # triage_classification is a correlator meta-event, deliberately unmapped
+    # Corrected for SEMANTIC fit against real MITRE ATT&CK (audit in
+    # reports/AUDIT.md): each technique describes what the sensor actually
+    # observes, not a tactically-adjacent guess. Every entry is validated
+    # technique- and tactic-consistent against data/attack_reference.json by
+    # validate_mapping_against_reference().
+    "socket_lineage": {"tactic": "command-and-control", "technique": "T1071"},        # process opens an outbound app-layer socket (beaconing lineage)
+    "suspicious_beacon": {"tactic": "command-and-control", "technique": "T1102"},     # unsigned binary beaconing to a high-trust web service (carrier)
+    "bgp_anomaly": {"tactic": "collection", "technique": "T1557"},                    # routing interception / sinkhole = adversary-in-the-middle (parent)
+    "ntp_time_shift": {"tactic": "defense-evasion", "technique": "T1562"},            # rogue-NTP clock shift to defeat time-based checks
+    "hsts_time_manipulation": {"tactic": "defense-evasion", "technique": "T1553"},    # expired cert accepted via time rollback = subvert trust controls
+    "nvme_latency_anomaly": {"tactic": "collection", "technique": "T1005"},           # bulk local-disk read footprint (the sensor sees I/O, not egress)
+    "mac_flapping": {"tactic": "collection", "technique": "T1557.002"},               # ARP cache poisoning (MoCA/ARP MitM)
+    "rtc_clock_divergence": {"tactic": "defense-evasion", "technique": "T1562"},       # software clock vs hardware RTC divergence = impair defenses
+    "physics_anomaly": {"tactic": "collection", "technique": "T1557"},                # TTL/RTT single-hop intercept on a high-trust path = adversary-in-the-middle
+    "octet_reversal_detected": {"tactic": "command-and-control", "technique": "T1001"},  # DNS PTR octet reversal hides the C2 destination = data obfuscation
+    # Deliberately unmapped:
+    #   triage_classification — a correlator meta-event, not an adversary action.
+    #   impossible_state      — the sentinel's OWN confirmation verdict; no ATT&CK
+    #     technique means "my correlator fired", so any mapping (it was T1499
+    #     Endpoint Denial of Service) is an analytic error in an intel product.
 }
-
 
 def technique_name(technique_id: str) -> str | None:
     """Human-readable MITRE name for a technique id, or None if unknown."""
@@ -134,9 +139,8 @@ def next_stage_from_stages(stages: tuple[dict[str, Any], ...]) -> str:
 def predict_next_stage(events: list[IdrEvent]) -> str:
     """Next unobserved kill-chain tactic after the furthest tactic observed.
 
-    Unlike the former presence lookup, this respects progression: an
-    exfiltration-stage observation predicts impact next, whatever order the
-    events arrived in, and a lone execution-stage event predicts persistence —
-    not a stage the campaign already passed.
+    Progression-based, not presence-based: prediction advances past the
+    furthest tactic already seen, whatever order the events arrived in, rather
+    than reporting an earlier stage the campaign has already moved beyond.
     """
     return next_stage_from_stages(observed_attack_stages(events))

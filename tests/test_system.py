@@ -59,8 +59,8 @@ def test_finding_retains_primary_evidence():
     assert 0.0 <= finding.escalation_probability <= 1.0
     assert finding.evidence_event_ids
     assert finding.related_entities
-    assert finding.predicted_next_stage == "impact"
-    assert {stage["tactic"] for stage in finding.observed_attack_stages} >= {"execution", "command-and-control", "exfiltration"}
+    assert finding.predicted_next_stage == "exfiltration"
+    assert {stage["tactic"] for stage in finding.observed_attack_stages} >= {"command-and-control", "collection", "defense-evasion"}
 
 
 def test_schema_rejects_missing_fields():
@@ -795,7 +795,7 @@ def test_attack_table_covers_every_scored_kind():
     from idr_intelligence.schema import KIND_PRIOR
 
     unmapped = set(KIND_PRIOR) - set(KIND_TO_ATTACK)
-    assert unmapped == {"triage_classification"}
+    assert unmapped == {"triage_classification", "impossible_state"}
     for mapping in KIND_TO_ATTACK.values():
         assert mapping["tactic"] in TACTIC_ORDER
         assert mapping["technique"].startswith("T")
@@ -810,8 +810,8 @@ def test_attack_stages_are_time_ordered_with_evidence():
     by_id = {event.id: event for event in events}
     times = [by_id[event_id].timestamp for event_id in ids]
     assert times == sorted(times)
-    assert stages[0]["tactic"] == "execution"
-    assert stages[-1]["tactic"] == "exfiltration"
+    assert stages[0]["tactic"] == "command-and-control"   # earliest event: socket_lineage
+    assert stages[-1]["tactic"] == "collection"           # latest event: nvme_latency_anomaly
 
 
 def test_next_stage_respects_progression_not_presence():
@@ -820,12 +820,15 @@ def test_next_stage_respects_progression_not_presence():
     base = {"source": "kernel_ebpf", "severity": "HIGH", "metadata": {"host": "alpha"}}
     socket = IdrEvent.from_dict({**base, "id": "a" * 8 + "-0000-0000-0000-000000000001", "timestamp": "2026-06-18T12:00:00Z", "kind": {"type": "socket_lineage", "pid": 1}})
     nvme = IdrEvent.from_dict({**base, "id": "b" * 8 + "-0000-0000-0000-000000000002", "timestamp": "2026-06-18T11:00:00Z", "kind": {"type": "nvme_latency_anomaly", "device": "nvme0n1"}})
-    assert predict_next_stage([socket]) == "persistence"
-    assert predict_next_stage([nvme, socket]) == "impact"
-    assert predict_next_stage([socket, nvme]) == "impact"
+    # socket_lineage -> command-and-control (idx 11); next unobserved tactic is exfiltration.
+    assert predict_next_stage([socket]) == "exfiltration"
+    # nvme -> collection (10), socket -> command-and-control (11): furthest is C2 -> exfiltration.
+    assert predict_next_stage([nvme, socket]) == "exfiltration"
+    assert predict_next_stage([socket, nvme]) == "exfiltration"
     assert predict_next_stage([]) == "unknown"
-    impossible = IdrEvent.from_dict({**base, "id": "c" * 8 + "-0000-0000-0000-000000000003", "timestamp": "2026-06-18T13:00:00Z", "kind": {"type": "impossible_state"}})
-    assert predict_next_stage([impossible]) == "kill-chain-complete"
+    # impossible_state is deliberately unmapped (the correlator's own verdict, not an adversary technique).
+    impossible = IdrEvent.from_dict({**base, "id": "c" * 8 + "-0000-0000-0000-000000000003", "timestamp": "2026-06-18T13:00:00Z", "kind": {"type": "impossible_state", "correlated_event_ids": [], "description": "x", "kill_chain_stage": "y"}})
+    assert predict_next_stage([impossible]) == "unknown"
 
 
 def test_unmapped_kind_is_skipped_not_crashed():
@@ -838,7 +841,7 @@ def test_unmapped_kind_is_skipped_not_crashed():
     assert observed_attack_stages([triage]) == ()
     assert predict_next_stage([triage]) == "unknown"
     # Mixed in, it is skipped and the mapped kind still drives prediction.
-    assert predict_next_stage([triage, socket]) == "persistence"
+    assert predict_next_stage([triage, socket]) == "exfiltration"
 
 
 def test_same_tactic_kinds_each_emit_a_stage():
@@ -1916,7 +1919,7 @@ def test_findings_carry_real_technique_names():
     for stage in stages:
         assert stage.get("technique_name")  # real MITRE name, never empty
     names = {stage["technique"]: stage["technique_name"] for stage in stages}
-    assert names.get("T1041") == "Exfiltration Over C2 Channel"
+    assert names.get("T1071") == "Application Layer Protocol"   # socket_lineage
     # Streaming and batch agree on the enriched stage records.
     scorer = StreamingScorer(model)
     for event in sorted(events, key=lambda e: (e.timestamp, e.id)):

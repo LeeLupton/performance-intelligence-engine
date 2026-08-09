@@ -341,6 +341,11 @@
         "id": "ADR-32",
         "decision": "Ground the deterministic ATT&CK machinery in real MITRE data. Lee pointed at /home/lee/Desktop/cti (the MITRE ATT&CK/CAPEC STIX repo). scripts/ground_attack_reference.py distills the 45MB Enterprise STIX bundle into a compact committed src/idr_intelligence/data/attack_reference.json (canonical 14-tactic order + 691 techniques id->{name,tactics}); attack.py derives TACTIC_ORDER from it and validates KIND_TO_ATTACK against it (validate_mapping_against_reference). Every one of the 11 hand-typed mappings was already tactic-consistent with real MITRE (validated, not assumed); the only gap was the hand TACTIC_ORDER omitting the two pre-compromise tactics (reconnaissance, resource-development) \u2014 added, which is behavior-preserving for next_stage because no kind maps to them and relative order is unchanged. A freshness test rebuilds from the live bundle when present so a MITRE release cannot leave the vendored copy stale. HONEST SCOPE: this grounds the DETERMINISTIC/auditable field idr-sentinel corroborates and can make the simulator more realistic; it is NOT labeled IdrEvent campaign data, so it does not close the training/calibration wall for the learned escalation model.",
         "where": "src/idr_intelligence/attack.py; scripts/ground_attack_reference.py; src/idr_intelligence/data/attack_reference.json"
+      },
+      {
+        "id": "ADR-33",
+        "decision": "ATT&CK mapping semantic audit (user caught physics_anomaly->T1495 Firmware Corruption, a TTL-intercept signal mapped to a firmware-wipe technique). Root cause: the W5 hand-typed KIND_TO_ATTACK was only ever checked for tactic-CONSISTENCY (technique exists + its MITRE tactics include the assigned tactic), which passes tactically-valid-but-semantically-wrong mappings. Re-audited all 11 via a 21-agent adversarial workflow (judge each + adversarially verify each proposed fix; several fetched primary MITRE). Corrections: physics_anomaly impact/T1495 -> collection/T1557 (AitM); impossible_state impact/T1499 -> UNMAPPED (it is the correlator's own verdict; old mapping existed only to force next_stage='kill-chain-complete'); nvme_latency_anomaly exfiltration/T1041 -> collection/T1005 (sensor sees local disk reads not egress); octet_reversal defense-evasion/T1027 -> command-and-control/T1001 (Data Obfuscation, no file); hsts_time_manipulation credential-access/T1557 -> defense-evasion/T1553 (Subvert Trust Controls); suspicious_beacon T1071 -> T1102 (Web Service carrier); socket_lineage execution/T1059 -> command-and-control/T1071 (app-layer socket, not a script interpreter). Kept (primary-source verified): bgp_anomaly collection/T1557, ntp/rtc defense-evasion/T1562, mac_flapping collection/T1557.002. All re-verified tactic-consistent against attack_reference.json; findings no longer fabricate execution/exfiltration stages; next_stage shifts (full campaign now predicts exfiltration not impact); tests + rust goldens updated/regenerated. Documented in reports/AUDIT.md.",
+        "where": "src/idr_intelligence/attack.py; reports/AUDIT.md"
       }
     ]
   },
@@ -611,7 +616,7 @@
     "state_vector": [],
     "latest_event": {
       "when": "2026-07-26",
-      "summary": "Built the red-team label driver: drives synthetic multi-modal windows through idr-main's REAL SentinelCorrelator (in-process, auto_panic off = ip/nvme commands unreachable) and labels by its ImpossibleState verdict. Verified 40/40, train+validate=go/non-binding. Closes the LABEL axis (real correlator labels, not asserted); EVENT axis still synthetic so non-binding. Discovered + safely handled the nvme-crypto-erase panic path."
+      "summary": "User caught a nonsense ATT&CK mapping (physics_anomaly->Firmware Corruption T1495). Root cause: my 'grounding' only checked tactic-consistency, not semantic fit. Re-audited all 11 mappings (21-agent adversarial workflow, primary MITRE); corrected 7, unmapped impossible_state, kept 4 (verified). physics_anomaly now Adversary-in-the-Middle T1557. Tests + rust goldens updated; 131 py + rust + benchmark green."
     }
   }
 }
