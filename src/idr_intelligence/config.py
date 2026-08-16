@@ -36,6 +36,15 @@ DEFAULT_KIND_PRIOR = {
     "triage_classification": 0.60,
     "bgp_anomaly": 0.48,
     "impossible_state": 1.0,
+    # Kernel/eBPF kill-chain precursors (idr_common::EventKind, DPRK-001 stages 1-2).
+    "igmp_trigger": 0.45,
+    "quic_heartbeat": 0.58,
+    # The sentinel's own two-signal correlation (igmp_trigger + quic_heartbeat within
+    # 500ms) — a derived meta-event, stronger than either precursor alone.
+    "igmp_quic_correlation": 0.82,
+    # Sentinel's own countermeasure record; only ever emitted alongside a confirmed
+    # dual-signal panic condition, so it's as conclusive as impossible_state.
+    "panic_response": 1.0,
 }
 
 

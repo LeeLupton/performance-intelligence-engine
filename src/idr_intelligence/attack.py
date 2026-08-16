@@ -48,11 +48,19 @@ KIND_TO_ATTACK = {
     "rtc_clock_divergence": {"tactic": "defense-evasion", "technique": "T1562"},       # software clock vs hardware RTC divergence = impair defenses
     "physics_anomaly": {"tactic": "collection", "technique": "T1557"},                # TTL/RTT single-hop intercept on a high-trust path = adversary-in-the-middle
     "octet_reversal_detected": {"tactic": "command-and-control", "technique": "T1001"},  # DNS PTR octet reversal hides the C2 destination = data obfuscation
+    "igmp_trigger": {"tactic": "command-and-control", "technique": "T1205"},          # IGMPv3 magic-packet wake for a dormant implant = traffic signaling
+    "quic_heartbeat": {"tactic": "command-and-control", "technique": "T1071.001"},    # QUIC/UDP-443 beacon disguised as web traffic = application layer protocol
     # Deliberately unmapped:
-    #   triage_classification — a correlator meta-event, not an adversary action.
-    #   impossible_state      — the sentinel's OWN confirmation verdict; no ATT&CK
+    #   triage_classification  — a correlator meta-event, not an adversary action.
+    #   impossible_state       — the sentinel's OWN confirmation verdict; no ATT&CK
     #     technique means "my correlator fired", so any mapping (it was T1499
     #     Endpoint Denial of Service) is an analytic error in an intel product.
+    #   igmp_quic_correlation  — the sentinel's OWN correlation of igmp_trigger +
+    #     quic_heartbeat within a time window; same category as triage_classification,
+    #     not an independently observed adversary technique.
+    #   panic_response         — the sentinel's OWN countermeasure action (what the
+    #     defender did), not anything the adversary did; mapping it would describe
+    #     our response as their technique.
 }
 
 def technique_name(technique_id: str) -> str | None:
