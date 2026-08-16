@@ -795,7 +795,7 @@ def test_attack_table_covers_every_scored_kind():
     from idr_intelligence.schema import KIND_PRIOR
 
     unmapped = set(KIND_PRIOR) - set(KIND_TO_ATTACK)
-    assert unmapped == {"triage_classification", "impossible_state"}
+    assert unmapped == {"triage_classification", "impossible_state", "igmp_quic_correlation", "panic_response"}
     for mapping in KIND_TO_ATTACK.values():
         assert mapping["tactic"] in TACTIC_ORDER
         assert mapping["technique"].startswith("T")

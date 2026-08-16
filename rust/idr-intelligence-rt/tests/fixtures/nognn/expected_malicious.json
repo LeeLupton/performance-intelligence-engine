@@ -99,8 +99,8 @@
     "owns": 2
   },
   "engine_version": "0.1.0",
-  "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
-  "scored_at": "2026-07-27T01:31:14.511113+00:00",
+  "feature_schema_hash": "88310d5b8c464ec74ab88904dff2a5d4",
+  "scored_at": "2026-08-09T06:13:23.734972+00:00",
   "feature_drift": null,
   "continues_campaign": false,
   "windows_observed": 1

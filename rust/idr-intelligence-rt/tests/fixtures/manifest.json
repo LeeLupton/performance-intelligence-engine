@@ -2,8 +2,8 @@
   "format": "idr-intelligence-onnx-v1",
   "engine_version": "0.1.0",
   "model_version": "fixture-v1",
-  "created_at": "2026-07-27T01:31:14.221863+00:00",
-  "feature_schema_hash": "ca516940d8614b35ad5b7bb0a6e5f66e",
+  "created_at": "2026-08-09T06:13:23.245984+00:00",
+  "feature_schema_hash": "88310d5b8c464ec74ab88904dff2a5d4",
   "model": {
     "feature_dim": 22,
     "hidden_dim": 24,
@@ -63,7 +63,11 @@
       "rtc_clock_divergence": 0.38,
       "triage_classification": 0.6,
       "bgp_anomaly": 0.48,
-      "impossible_state": 1.0
+      "impossible_state": 1.0,
+      "igmp_trigger": 0.45,
+      "quic_heartbeat": 0.58,
+      "igmp_quic_correlation": 0.82,
+      "panic_response": 1.0
     },
     "kind_prior_default": 0.18,
     "delta_log_divisor": 12.0
@@ -135,6 +139,16 @@
         "tactic": "command-and-control",
         "technique": "T1001",
         "technique_name": "Data Obfuscation"
+      },
+      "igmp_trigger": {
+        "tactic": "command-and-control",
+        "technique": "T1205",
+        "technique_name": "Traffic Signaling"
+      },
+      "quic_heartbeat": {
+        "tactic": "command-and-control",
+        "technique": "T1071.001",
+        "technique_name": "Web Protocols"
       }
     }
   },
