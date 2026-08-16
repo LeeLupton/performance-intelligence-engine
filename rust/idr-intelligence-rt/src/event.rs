@@ -88,12 +88,14 @@ fn parse_timestamp(value: &Value) -> Result<DateTime<Utc>, String> {
 /// exhaustively by `tests/fixtures/timestamp_battery.json` — the enumeration
 /// of strftime formats this replaces under-accepted by the hundreds.
 ///
-/// Grammar (verified against the reference interpreter): date is
-/// `YYYY-MM-DD` | `YYYYMMDD` | `YYYY-Www[-D]` | `YYYYWww[D]`; when a time
-/// follows, it is separated by exactly one character (any); time is
+/// Grammar (verified against the reference interpreter, CPython >= 3.14.7):
+/// date is `YYYY-MM-DD` | `YYYYMMDD` | `YYYY-Www[-D]` | `YYYYWww[D]`; when a
+/// time follows, it is separated by exactly one character (any); time is
 /// `HH[:MM[:SS]]` or `HH[MM[SS]]` with an optional `.`/`,` fraction only
-/// after seconds (zero fraction digits allowed, truncated to microseconds);
-/// hour 24 rolls to next-day midnight when minutes/seconds/fraction are zero;
+/// after seconds (at least one fraction digit required — a bare trailing
+/// separator is rejected as of CPython 3.14.7, truncated to microseconds
+/// when more than six digits are given); hour 24 rolls to next-day midnight
+/// when minutes/seconds/fraction are zero;
 /// the offset is `Z` (uppercase only) or a sign plus the same time grammar
 /// (hour <= 23). Python datetimes span years 1..=9999, so conversions past
 /// either end are rejected like Python's OverflowError.
@@ -310,9 +312,11 @@ fn parse_iso_time(time: &str) -> Option<TimeParts> {
 ///   "11:0930" or "1109:30" fails;
 /// - exactly one trailing character of ANY kind is tolerated, but only when an
 ///   offset follows ("11W+00" is 11:00+00:00; "11W" alone fails);
-/// - a fraction (after seconds only) demands min(remaining, 6) DIGITS — so
-///   ".5W+00" fails (quota 2 hits 'W') while ".123456:+09" succeeds (quota met,
-///   ':' becomes the tolerated trailing character) — and extra digits truncate;
+/// - a fraction (after seconds only) demands min(remaining, 6) DIGITS, with
+///   at least one required (a bare trailing `.`/`,` — quota 0 — is rejected
+///   as of CPython 3.14.7) — so ".5W+00" fails (quota 2 hits 'W') while
+///   ".123456:+09" succeeds (quota met, ':' becomes the tolerated trailing
+///   character) — and extra digits truncate;
 /// - basic-format seconds may be followed by bare fraction digits under the
 ///   same quota ("1109012345" is 11:09:01.2345).
 fn parse_hh_mm_ss_ff(base: &[u8], offset_follows: bool) -> Option<(u32, u32, u32, u32)> {
@@ -336,6 +340,13 @@ fn parse_hh_mm_ss_ff(base: &[u8], offset_follows: bool) -> Option<(u32, u32, u32
         let c = base[position];
         position += 1;
         if position == len {
+            // A bare trailing fraction separator (zero digits) is rejected
+            // unconditionally as of CPython 3.14.7 -- unlike other single
+            // trailing characters, it does not get the offset_follows
+            // tolerance below.
+            if index >= 2 && (c == b'.' || c == b',') {
+                return None;
+            }
             // c is the single tolerated trailing character.
             return if offset_follows {
                 Some((comps[0], comps[1], comps[2], 0))
@@ -366,11 +377,15 @@ fn parse_hh_mm_ss_ff(base: &[u8], offset_follows: bool) -> Option<(u32, u32, u32
             }
         }
     }
-    // Fraction: min(remaining, 6) characters MUST be digits; further digits
-    // truncate away; any remaining tail (of any length) is tolerated only
-    // when an offset follows — unlike the exactly-one-character tolerance
-    // after bare components.
+    // Fraction: min(remaining, 6) characters MUST be digits, and at least one
+    // is required — a bare trailing separator (quota 0) is rejected as of
+    // CPython 3.14.7. Further digits truncate away; any remaining tail (of
+    // any length) is tolerated only when an offset follows — unlike the
+    // exactly-one-character tolerance after bare components.
     let quota = (len - position).min(6);
+    if quota == 0 {
+        return None;
+    }
     let digits = fixed_digits(base, position, quota)?;
     position += quota;
     let micros = digits * 10u32.pow(6 - quota as u32);
@@ -454,5 +469,23 @@ mod tests {
     fn rejects_garbage() {
         assert!(parse_timestamp(&json!("not-a-time")).is_err());
         assert!(parse_timestamp(&json!(1234)).is_err());
+    }
+
+    #[test]
+    fn rejects_bare_trailing_fraction_separator() {
+        // CPython 3.14.7 tightened fromisoformat to require >= 1 fraction
+        // digit; a lone trailing "." or "," (zero digits) is now invalid,
+        // with or without an offset following. Caught the hard way when the
+        // committed timestamp battery went stale under a Python upgrade.
+        for shape in [
+            "2026-03-01T11:09:30.",
+            "2026-03-01T11:09:30,",
+            "2026-03-01T11:09:30.+00",
+            "2026-03-01T11:09:30,+00",
+        ] {
+            assert!(parse_timestamp(&json!(shape)).is_err(), "shape {shape:?}");
+        }
+        // One digit is still enough.
+        assert!(parse_timestamp(&json!("2026-03-01T11:09:30.5+00")).is_ok());
     }
 }

@@ -86,7 +86,7 @@
   },
   "engine_version": "0.1.0",
   "feature_schema_hash": "88310d5b8c464ec74ab88904dff2a5d4",
-  "scored_at": "2026-08-09T06:13:23.702402+00:00",
+  "scored_at": "2026-08-16T17:17:52.935418+00:00",
   "feature_drift": {
     "psi_max": 3.435571,
     "psi_mean": 0.628793,
